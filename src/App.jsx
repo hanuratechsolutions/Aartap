@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   CheckCircle2, ChevronRight, Clock3, FlaskConical, Heart, Home, MapPin,
-  MessageCircle, Package, Phone, Pill, Plus, Search, ShieldCheck, ShoppingBag,
+  Mail, MessageCircle, Package, Phone, Pill, Plus, Search, ShieldCheck, ShoppingBag,
   ShoppingCart, SlidersHorizontal, Sparkles, Stethoscope, Truck, UserRound,
   Video, X, LogOut, Upload, Star, Mic, ClipboardList,
 } from "lucide-react";
@@ -16,12 +16,28 @@ const pharmacyCatalogs = {
   "Netmeds Pharmacy": medicines.filter((item) => item.name !== "ORS Powder"),
 };
 const formatInputDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const formatRupees = (amount) => new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  maximumFractionDigits: 2,
+}).format(amount);
+const createLabTestOrder = (test, lab) => ({
+  ...test,
+  name: `${test.short} · ${lab.name} (Home Sample Collection)`,
+  category: "Lab test",
+  note: `${lab.name} · Home Sample Collection`,
+  orderType: "lab-test",
+  collectionType: "Home Sample Collection",
+  labName: lab.name,
+});
 const today = new Date();
 const todayInputDate = formatInputDate(today);
 const readSession = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
-    return saved && /^[6-9]\d{9}$/.test(saved.phone) ? saved : null;
+    return saved && (
+      /^[6-9]\d{9}$/.test(saved.phone || "")
+      || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(saved.email || "")
+    ) ? saved : null;
   } catch {
     return null;
   }
@@ -48,20 +64,43 @@ function Button({ children, variant = "primary", className = "", ...props }) {
 function Login({ onLogin }) {
   const [step, setStep] = useState("welcome");
   const [authMode, setAuthMode] = useState("login");
+  const [authMethod, setAuthMethod] = useState("phone");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const [signupCategory, setSignupCategory] = useState("");
 
   const beginLogin = () => {
     setAuthMode("login");
+    setAuthMethod("phone");
+    setSignupCategory("");
     setError("");
     setOtp("");
     setStep("phone");
   };
   const beginRegistration = () => {
     setAuthMode("register");
+    setAuthMethod("phone");
+    setSignupCategory("");
+    setError("");
+    setOtp("");
+    setStep("phone");
+  };
+  const beginEmailLogin = () => {
+    setAuthMode("login");
+    setAuthMethod("email");
+    setSignupCategory("");
+    setError("");
+    setOtp("");
+    setStep("email");
+  };
+  const beginCategoryLogin = (category) => {
+    setAuthMode("login");
+    setAuthMethod("phone");
+    setSignupCategory(category);
     setError("");
     setOtp("");
     setStep("phone");
@@ -72,8 +111,16 @@ function Login({ onLogin }) {
       setError("Enter your first and last name.");
       return;
     }
-    if (!/^[6-9]\d{9}$/.test(phone)) {
+    if (authMode === "register" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (authMethod === "phone" && !/^[6-9]\d{9}$/.test(phone)) {
       setError("Enter a valid 10-digit Indian mobile number.");
+      return;
+    }
+    if (authMethod === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Enter a valid email address.");
       return;
     }
     setError("");
@@ -86,15 +133,20 @@ function Login({ onLogin }) {
       return;
     }
     const user = {
-      phone,
+      ...(authMethod === "phone" ? { phone } : {}),
+      ...(authMethod === "email" || authMode === "register" ? { email: email.trim().toLowerCase() } : {}),
       signedInAt: new Date().toISOString(),
       ...(authMode === "register" ? { firstName: firstName.trim(), lastName: lastName.trim() } : {}),
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    onLogin(user);
+    onLogin(user, signupCategory || "home");
   };
 
-  return <main className="login-page">
+  const continueAsGuest = () => onLogin({ guest: true, signedInAt: new Date().toISOString() }, "home");
+
+  const isRegistration = authMode === "register" && step !== "otp";
+
+  return <main className={`login-page ${step === "welcome" ? "login-page-welcome" : ""} ${isRegistration ? "login-page-register" : ""}`}>
     <section className="login-art">
       <Logo />
       <div className="login-art-copy">
@@ -107,38 +159,60 @@ function Login({ onLogin }) {
         <div><Clock3 /><b>9 AM to 9 PM</b><small>online consultations</small></div>
       </div>
     </section>
-    <section className="login-form-side">
+    <section className={`login-form-side ${step === "welcome" ? "login-form-welcome" : ""} ${isRegistration ? "login-form-register" : ""}`}>
       <div className="login-form-wrap">
         <div className="login-mobile-logo"><Logo compact /></div>
         {step === "welcome" ? <>
           <h2>Welcome</h2>
-          <Button type="button" className="login-method" onClick={beginLogin}><Phone size={18} /><span>Continue with Phone</span><ChevronRight size={18} /></Button>
-          <div className="login-register-cta"><span>New to Aartap?</span><button type="button" onClick={beginRegistration}>Register</button></div>
+          <div className="login-options">
+            <button type="button" className="login-option login-option-primary" onClick={beginLogin}><span className="login-option-icon"><Phone size={17} /></span><span>Continue with Phone</span><ChevronRight size={16} /></button>
+            <button type="button" className="login-option" onClick={() => setError("Google sign-in is not configured in this demo. Continue with phone or email instead.")}><span className="login-option-icon login-google-icon">G</span><span>Continue with Google</span><ChevronRight size={16} /></button>
+            <button type="button" className="login-option" onClick={beginEmailLogin}><span className="login-option-icon"><Mail size={16} /></span><span>Enter your Email ID</span><ChevronRight size={16} /></button>
+            <button type="button" className="login-option" onClick={continueAsGuest}><span className="login-option-icon"><UserRound size={16} /></span><span>Continue as Guest</span><ChevronRight size={16} /></button>
+          </div>
+          {error && <p className="validation-error login-welcome-error" role="alert">{error}</p>}
+          <div className="login-category-divider"><span>OR REGISTER / SIGN IN AS</span></div>
+          <div className="login-category-grid">
+            {[["doctors", "Doctors"], ["pharmacy", "Pharmacy"], ["labs", "Diagnostic Lab"]].map(([page, label]) => <button key={page} type="button" onClick={() => beginCategoryLogin(page)}><b>{label}</b><small>Register / Sign in</small></button>)}
+          </div>
           <p className="login-terms">By continuing, you agree to our <a href="#terms">Terms &amp; Conditions</a>, <a href="#privacy">Privacy Policy</a> and Cancellation, Replacement &amp; Refund Policy.</p>
         </> : <>
           <button className="login-back" type="button" onClick={() => { setStep("welcome"); setError(""); }}>← Back to options</button>
-          <div className="login-steps"><i className={step === "phone" ? "active" : ""} /><i className={step === "otp" ? "active" : ""} /><span>{step === "phone" ? (authMode === "register" ? "CREATE YOUR ACCOUNT" : "SIGN IN WITH PHONE") : "VERIFY YOUR NUMBER"}</span></div>
-          <h2>{step === "phone" ? (authMode === "register" ? <>Create your<br /><em>account.</em></> : <>Continue with<br /><em>your phone.</em></>) : <>A little check-in,<br /><em>then you’re in.</em></>}</h2>
-          <p className="login-subtitle">{step === "phone" ? (authMode === "register" ? "Enter your details to get started." : "Sign in or create an account with your mobile number.") : `Enter the 6-digit code sent to +91 ${phone.slice(0, 2)}•••••${phone.slice(-3)}.`}</p>
+          <div className="login-steps"><i className={step === "otp" ? "" : "active"} /><i className={step === "otp" ? "active" : ""} /><span>{step === "otp" ? (authMethod === "email" ? "VERIFY YOUR EMAIL" : "VERIFY YOUR NUMBER") : (authMode === "register" ? "CREATE YOUR ACCOUNT" : `SIGN IN WITH ${authMethod.toUpperCase()}`)}</span></div>
+          <h2>{step === "email" ? (authMode === "register" ? <>Create your<br /><em>account.</em></> : <>Continue with<br /><em>your email.</em></>) : step === "phone" ? (authMode === "register" ? <>Create your<br /><em>account.</em></> : <>Continue with<br /><em>your phone.</em></>) : <>A little check-in,<br /><em>then you’re in.</em></>}</h2>
+          <p className="login-subtitle">{step === "email" ? "Enter your email address to continue. This demo uses a verification code and does not send an email." : step === "phone" ? (signupCategory ? `Sign in or register to continue to ${signupCategory === "labs" ? "Diagnostic Lab" : signupCategory}.` : authMode === "register" ? "Enter your details to get started." : "Sign in or create an account with your mobile number.") : authMethod === "email" ? `Enter the 6-digit demo code for ${email.trim().toLowerCase()}.` : `Enter the 6-digit code sent to +91 ${phone.slice(0, 2)}•••••${phone.slice(-3)}.`}</p>
         </>}
-        {step === "phone" && <form onSubmit={sendCode} noValidate>
+        {step === "phone" && <form className={authMode === "register" ? "registration-form" : ""} onSubmit={sendCode} noValidate>
+          {authMode === "register" ? <div className="registration-fields-grid">
+            <div className="registration-field"><label className="form-label" htmlFor="register-first-name">First name</label><input className={`register-name-input ${error && !firstName.trim() ? "input-error" : ""}`} id="register-first-name" autoComplete="given-name" placeholder="First name" value={firstName} onChange={(e) => { setFirstName(e.target.value); setError(""); }} required /></div>
+            <div className="registration-field"><label className="form-label" htmlFor="register-last-name">Last name</label><input className={`register-name-input ${error && !lastName.trim() ? "input-error" : ""}`} id="register-last-name" autoComplete="family-name" placeholder="Last name" value={lastName} onChange={(e) => { setLastName(e.target.value); setError(""); }} required /></div>
+            <div className="registration-field"><label className="form-label" htmlFor="register-phone-email">Email address</label><input className={`register-name-input ${error && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? "input-error" : ""}`} id="register-phone-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} required /></div>
+            <div className="registration-field"><label className="form-label" htmlFor="login-phone">Mobile number</label><div className={`login-phone ${error && !/^[6-9]\d{9}$/.test(phone) ? "input-error" : ""}`}><span>🇮🇳 &nbsp;+91</span><i /><input id="login-phone" autoComplete="tel-national" inputMode="numeric" maxLength={10} placeholder="Enter 10-digit number" value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setError(""); }} required /></div></div>
+          </div> : <><label className="form-label" htmlFor="login-phone">Mobile number</label>
+            <div className={`login-phone ${error && !/^[6-9]\d{9}$/.test(phone) ? "input-error" : ""}`}><span>🇮🇳 &nbsp;+91</span><i /><input id="login-phone" autoComplete="tel-national" inputMode="numeric" maxLength={10} placeholder="Enter 10-digit number" value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setError(""); }} required /></div></>}
+          <small className="form-hint registration-form-hint">{authMode === "register" ? "We’ll verify your mobile number with a demo code." : "We’ll send a one-time password to verify it’s you."}</small>
+          {error && <p className="validation-error">{error}</p>}
+          <Button type="submit" className="login-submit">{authMode === "register" ? "Register" : "Continue with phone"} <ArrowRight size={18} /></Button>
+          <div className="login-register-cta"><span>{authMode === "register" ? "Already have an account?" : "New to Aartap?"}</span><button type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setError(""); }}> {authMode === "register" ? "Sign in" : "Register"}</button></div>
+        </form>}
+        {step === "email" && <form onSubmit={sendCode} noValidate>
           {authMode === "register" && <div className="register-name-fields">
             <div><label className="form-label" htmlFor="register-first-name">First name</label><input className={`register-name-input ${error && !firstName.trim() ? "input-error" : ""}`} id="register-first-name" autoComplete="given-name" placeholder="First name" value={firstName} onChange={(e) => { setFirstName(e.target.value); setError(""); }} required /></div>
             <div><label className="form-label" htmlFor="register-last-name">Last name</label><input className={`register-name-input ${error && !lastName.trim() ? "input-error" : ""}`} id="register-last-name" autoComplete="family-name" placeholder="Last name" value={lastName} onChange={(e) => { setLastName(e.target.value); setError(""); }} required /></div>
           </div>}
-          <label className="form-label" htmlFor="login-phone">Mobile number</label>
-          <div className={`login-phone ${error && !/^[6-9]\d{9}$/.test(phone) ? "input-error" : ""}`}><span>🇮🇳 &nbsp;+91</span><i /><input id="login-phone" autoComplete="tel-national" inputMode="numeric" maxLength={10} placeholder="Enter 10-digit number" value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setError(""); }} required /></div>
-          <small className="form-hint">We’ll send a one-time password to verify it’s you.</small>
+          <label className="form-label" htmlFor="login-email">Email address</label>
+          <input className={`register-name-input login-email-input ${error && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? "input-error" : ""}`} id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} required />
           {error && <p className="validation-error">{error}</p>}
-          <Button type="submit" className="login-submit">{authMode === "register" ? "Register with mobile" : "Continue with phone"} <ArrowRight size={18} /></Button>
+          <Button type="submit" className="login-submit">{authMode === "register" ? "Register with email" : "Continue with email"} <ArrowRight size={18} /></Button>
+          <div className="login-register-cta"><span>{authMode === "register" ? "Already have an account?" : "New to Aartap?"}</span><button type="button" onClick={() => { setAuthMode(authMode === "register" ? "login" : "register"); setError(""); }}> {authMode === "register" ? "Sign in" : "Register"}</button></div>
         </form>}
         {step === "otp" && <form onSubmit={verify} noValidate>
           <label className="form-label" htmlFor="login-otp">Verification code</label>
           <input className={`otp-input ${error ? "input-error" : ""}`} id="login-otp" autoFocus autoComplete="one-time-code" inputMode="numeric" maxLength={6} placeholder="• • • • • •" value={otp} onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }} required />
-          <small className="form-hint">Demo code: <strong>123456</strong></small>
+          <small className="form-hint">{authMethod === "email" ? "Demo code (no email sent): " : "Demo code: "}<strong>123456</strong></small>
           {error && <p className="validation-error">{error}</p>}
           <Button type="submit" className="login-submit">{authMode === "register" ? "Verify & register" : "Verify & sign in"} <ArrowRight size={18} /></Button>
-          <div className="otp-links"><button type="button" onClick={() => { setStep("phone"); setError(""); }}>← Change number</button><button type="button" onClick={() => setError("Your new demo code is 123456.")}>Resend code</button></div>
+          <div className="otp-links"><button type="button" onClick={() => { setStep(authMethod === "email" ? "email" : "phone"); setError(""); }}>← Change {authMethod === "email" ? "email" : "number"}</button><button type="button" onClick={() => setError(authMethod === "email" ? "Demo code remains 123456. No email was sent." : "Your new demo code is 123456.")}>Resend code</button></div>
         </form>}
       </div>
     </section>
@@ -172,6 +246,27 @@ function App() {
   const [orderStatus, setOrderStatus] = useState("All");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
+
+  useEffect(() => {
+    const scrollTimers = new Map();
+    const showScrollbar = (event) => {
+      const scroller = event.target instanceof HTMLElement ? event.target : document.documentElement;
+      scroller.classList.add("is-scrolling");
+      window.clearTimeout(scrollTimers.get(scroller));
+      scrollTimers.set(scroller, window.setTimeout(() => {
+        scroller.classList.remove("is-scrolling");
+        scrollTimers.delete(scroller);
+      }, 900));
+    };
+    document.addEventListener("scroll", showScrollbar, true);
+    return () => {
+      document.removeEventListener("scroll", showScrollbar, true);
+      scrollTimers.forEach((timer, scroller) => {
+        window.clearTimeout(timer);
+        scroller.classList.remove("is-scrolling");
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -240,12 +335,17 @@ function App() {
     setCart([]);
   };
   const addToCart = (item, pharmacyName) => {
-    const hasDifferentOrderType = cart.some((entry) => entry.pharmacyName !== pharmacyName);
+    const orderType = item.orderType || (pharmacyName ? "pharmacy" : "other");
+    const hasDifferentOrderType = cart.some((entry) => (
+      entry.pharmacyName !== pharmacyName
+      || (entry.orderType || (entry.pharmacyName ? "pharmacy" : "other")) !== orderType
+      || (orderType === "lab-test" && entry.labName !== item.labName)
+    ));
     if (cart.length && hasDifferentOrderType) {
       const currentPharmacy = cart.find((entry) => entry.pharmacyName)?.pharmacyName;
       setToast(currentPharmacy
         ? `Your bag has items from ${currentPharmacy}. Place that order before switching pharmacies or order types.`
-        : "Your bag has a different order type. Place that order before starting a pharmacy order.");
+        : "Your bag has a different order type or lab. Place that order before starting another order.");
       return;
     }
     setCart((current) => {
@@ -260,14 +360,17 @@ function App() {
   const placeOrder = (address, paymentMethod) => {
     const pharmacyName = cart.find((item) => item.pharmacyName)?.pharmacyName;
     const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const isLabOrder = cart.some((item) => item.orderType === "lab-test");
+    const labName = cart.find((item) => item.orderType === "lab-test")?.labName;
     const order = {
       id: `AAR-${Math.floor(2000 + Math.random() * 7000)}`,
       title: cart.map((item) => `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ""}`).join(", "),
-      kind: pharmacyName ? `Pharmacy · ${pharmacyName}` : "Healthcare",
+      kind: isLabOrder ? `Lab tests · ${labName} · Home collection` : pharmacyName ? `Pharmacy · ${pharmacyName}` : "Healthcare",
       date: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date()),
       amount: total,
+      ...(isLabOrder ? { orderType: "lab-test", advancePaid: total / 2, balanceDue: total / 2 } : {}),
       status: "Processing",
-      icon: pharmacyName ? Pill : ShoppingBag,
+      icon: isLabOrder ? FlaskConical : pharmacyName ? Pill : ShoppingBag,
       address,
       paymentMethod,
     };
@@ -287,10 +390,12 @@ function App() {
     setModal(null);
     go("appointments");
   };
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) return <Login onLogin={(nextUser, nextPage) => { setUser(nextUser); setPage(nextPage); }} />;
 
-  const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ") || "Aartap member";
-  const userInitials = user.firstName ? `${user.firstName[0]}${user.lastName?.[0] || ""}`.toUpperCase() : "A";
+  const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email?.split("@")[0] || (user.guest ? "Guest" : "Aartap member");
+  const userInitials = user.firstName
+    ? `${user.firstName[0]}${user.lastName?.[0] || ""}`.toUpperCase()
+    : user.email?.[0].toUpperCase() || (user.guest ? "G" : "A");
   const heading = {
     home: [`Welcome back${user.firstName ? `, ${user.firstName}` : ""}`, "Your health, in good hands."],
     doctors: ["Find your doctor", "Thoughtful care from trusted specialists."],
@@ -298,7 +403,7 @@ function App() {
     pharmacy: ["Pharmacy", "Everyday essentials, delivered with care."],
     labs: ["Lab Tests", "Reliable testing, from the comfort of home."],
     wishlist: ["My Wishlist", "Your saved medicines, tests, pharmacies and labs."],
-    tracking: ["Track Order", "Follow your delivery from dispatch to your door."],
+    tracking: ["Track Order", "Follow deliveries and home sample collections."],
     orders: ["Your Orders", "Keep track of your healthcare essentials."],
     profile: ["Profile", "Your details, preferences and care history."],
   }[page];
@@ -321,7 +426,7 @@ function App() {
           <div className="profile-menu" ref={profileMenuRef}>
             <button className="top-user" aria-label="Open account menu" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}><Avatar initials={userInitials} size="sm" /></button>
             {profileMenuOpen && <div className="profile-menu-dropdown" role="menu">
-              <div className="profile-menu-user"><Avatar initials={userInitials} size="sm" /><span><b>{displayName}</b><small>+91 {user.phone.slice(0, 2)}•••••{user.phone.slice(-3)}</small></span></div>
+              <div className="profile-menu-user"><Avatar initials={userInitials} size="sm" /><span><b>{displayName}</b><small>{user.phone ? `+91 ${user.phone.slice(0, 2)}•••••${user.phone.slice(-3)}` : user.email || "Guest session"}</small></span></div>
               <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); go("profile"); }}><UserRound size={17} />My profile</button>
               <button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); signOut(); }}><LogOut size={17} />Log out</button>
             </div>}
@@ -412,7 +517,7 @@ function DoctorsPage({ query, onBook, favorites, onFavorite }) {
 
 function DoctorDirectoryCard({ doctor, onBook, favorite, onFavorite }) {
   return <article className="directory-doctor-card">
-    <div className="directory-doctor-head"><Avatar initials={doctor.initials} color={doctor.color} size="xl" /><div className="directory-doctor-info"><h3>{doctor.name}</h3><b>{doctor.category}</b><p>{doctor.credentials}</p></div><button className={`favorite-button ${favorite ? "is-favorite" : ""}`} aria-label={favorite ? `Remove ${doctor.name} from wishlist` : `Add ${doctor.name} to wishlist`} onClick={onFavorite}><Heart size={18} fill={favorite ? "currentColor" : "none"} /></button></div>
+    <div className="directory-doctor-head"><Avatar initials={doctor.initials} color={doctor.color} size="xl" /><div className="directory-doctor-info"><h3>{doctor.name}</h3><b>{doctor.specialty}</b><p>{doctor.credentials}</p></div><button className={`favorite-button ${favorite ? "is-favorite" : ""}`} aria-label={favorite ? `Remove ${doctor.name} from wishlist` : `Add ${doctor.name} to wishlist`} onClick={onFavorite}><Heart size={18} fill={favorite ? "currentColor" : "none"} /></button></div>
     <p className="doctor-registration"><ShieldCheck size={15} /> Reg. no. {doctor.registration}</p>
     <div className="directory-doctor-stats"><div><small>EXPERIENCE</small><b>{doctor.experience.replace("+", "")} years</b></div><div><small>RATING</small><b><Star size={15} fill="currentColor" /> {doctor.rating}</b></div></div>
     <p className="doctor-language-line">Available {doctor.availability} · {doctor.languages}</p>
@@ -519,26 +624,25 @@ function PharmacyPage({ query, onAdd, favorites, onFavorite, onNavigate, onToast
 
 function LabsPage({ query, onAdd, favorites, onFavorite, onNavigate, onToast }) {
   const nearbyLabsRef = useRef(null);
+  const popularTestsRef = useRef(null);
+  const [selectedLab, setSelectedLab] = useState(labs[0]);
   const filteredTests = tests.filter((item) => `${item.name} ${item.short} ${item.detail}`.toLowerCase().includes(query.toLowerCase()));
   const filteredLabs = labs;
-  const orderTest = (item, lab, collection) => onAdd({
-    ...item,
-    name: `${item.short} · ${lab.name} (${collection})`,
-    category: "Lab test",
-    note: `${lab.name} · ${collection}`,
-  });
+  const orderTest = (item) => onAdd(createLabTestOrder(item, selectedLab));
   return <div className="page-section lab-page">
     <ScheduledBanner type="lab" onClick={() => onToast("Your upcoming MedLab Diagnostics collection is scheduled.")} />
     <div className="shortcut-grid"><Shortcut icon={MapPin} label="Nearby labs" onClick={() => nearbyLabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} /><Shortcut icon={Heart} label="My wishlist" onClick={() => onNavigate("wishlist")} /><Shortcut icon={ClipboardList} label="My lab orders" onClick={() => onNavigate("orders")} /><Shortcut icon={Truck} label="Track collection" onClick={() => onNavigate("tracking")} /></div>
     <PrescriptionUpload onToast={onToast} description="Get accurate test suggestions from your prescription" />
-    <section className="lab-popular-section">
+    <section className="lab-popular-section" ref={popularTestsRef}>
       <div className="section-heading-row  popular-lab-tests-heading"><SectionTitle title="Popular Tests" action="See all" onAction={() => onToast(`${filteredTests.length} lab tests available.`)} /></div>
+      <p className="lab-selected-provider">Home sample collection by <b>{selectedLab.name}</b></p>
       <div className="lab-feature">
         <div className="lab-feature-art"><span>LAB</span><b>TESTS</b><div className="lab-tubes"><i /><i /><i /></div></div>
         <div className="lab-feature-list">{filteredTests.length ? filteredTests.map((item) => <article className="featured-test" key={item.short}>
           <span className="featured-test-icon">{item.glyph}</span>
           <b>{item.short}<small>{item.detail}</small></b>
-          <div className="featured-test-order"><button type="button" onClick={() => orderTest(item, labs[0], "Home Sample Collection")}><b>Order Now</b><small>(Home Sample Collection)</small></button><button type="button" onClick={() => orderTest(item, labs[0], "Walk-in")}><b>Order Now</b><small>(Walk-in)</small></button></div>
+          <strong>₹{formatRupees(item.price)}</strong>
+          <div className="featured-test-order"><button type="button" onClick={() => orderTest(item)}><b>Book home collection</b><small>Pay 50% advance</small></button></div>
           <button type="button" className={`featured-test-favorite ${favorites.includes(item.name) ? "is-favorite" : ""}`} aria-label={favorites.includes(item.name) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`} onClick={() => onFavorite(item.name)}><Heart size={16} fill={favorites.includes(item.name) ? "currentColor" : "none"} /></button>
           <ChevronRight size={16} />
         </article>) : <EmptyState title="No tests found" text="Try another test name or package." />}</div>
@@ -547,7 +651,7 @@ function LabsPage({ query, onAdd, favorites, onFavorite, onNavigate, onToast }) 
     <section className="content-section lab-nearby-section" ref={nearbyLabsRef}><SectionTitle title="Popular Labs Nearby You" action="See all" onAction={() => onToast("Showing all nearby labs.")} /><div className="mini-card-grid lab-nearby-grid">{filteredLabs.map((store) => <article className="lab-nearby-card" key={store.name}>
       <div className="lab-nearby-heading"><span className={`store-logo tone-${store.color}`}>{store.initials}</span><b>{store.name}</b><button className={`favorite-button ${favorites.includes(store.name) ? "is-favorite" : ""}`} aria-label={`Save ${store.name}`} onClick={() => onFavorite(store.name)}><Heart size={17} fill={favorites.includes(store.name) ? "currentColor" : "none"} /></button></div>
       <div className="lab-nearby-details"><span><Star size={14} fill="currentColor" /> {store.rating}</span><span><MapPin size={14} /> {store.distance}</span><span><Clock3 size={14} /> {store.delivery}</span><span><Home size={14} /> Home Collection</span></div>
-      <div className="lab-nearby-actions"><button type="button" onClick={() => orderTest(filteredTests[0] || tests[0], store, "Home Sample Collection")}>Order Now<small>(Home Sample Collection)</small></button><button type="button" onClick={() => orderTest(filteredTests[0] || tests[0], store, "Walk-in")}>Order Now<small>(Walk-in)</small></button></div>
+      <div className="lab-nearby-actions"><button type="button" className={selectedLab.name === store.name ? "selected" : ""} aria-pressed={selectedLab.name === store.name} onClick={() => { setSelectedLab(store); popularTestsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Select for home collection</button></div>
     </article>)}</div></section>
   </div>;
 }
@@ -620,7 +724,7 @@ function WishlistPage({ favorites, onFavorite, onAdd, onNavigate }) {
       </article>)}</div></section>}
       {!!savedTests.length && <section className="wishlist-section"><SectionTitle title="Saved lab tests" /><div className="wishlist-grid">{savedTests.map((item) => <article className="wishlist-card" key={item.name}>
         <span className="wishlist-item-icon"><FlaskConical size={20} /></span><div className="wishlist-card-info"><b>{item.name}</b><small>{item.detail} · {item.category}</small><strong>₹{item.price}</strong></div>
-        <button type="button" className="favorite-button is-favorite" aria-label={`Remove ${item.name} from wishlist`} onClick={() => onFavorite(item.name)}><Heart size={17} fill="currentColor" /></button><Button variant="outline" onClick={() => onAdd({ ...item, note: item.detail, glyph: item.glyph })}>Add test</Button>
+        <button type="button" className="favorite-button is-favorite" aria-label={`Remove ${item.name} from wishlist`} onClick={() => onFavorite(item.name)}><Heart size={17} fill="currentColor" /></button><Button variant="outline" onClick={() => onAdd(createLabTestOrder(item, labs[0]))}>Book home collection</Button>
       </article>)}</div></section>}
       {!!savedPharmacies.length && <WishlistStoreSection title="Saved pharmacies" items={savedPharmacies} onFavorite={onFavorite} />}
       {!!savedLabs.length && <WishlistStoreSection title="Saved labs" items={savedLabs} onFavorite={onFavorite} />}
@@ -640,11 +744,12 @@ function TrackingPage({ orders, selectedOrder, demoStatus, onDemoStatus }) {
   const demoSteps = ["Order confirmed", "Packed by pharmacy", "Out for delivery", "Delivered"];
   const demoCurrentStep = demoStatus === "Delivered" ? 3 : 2;
   const trackedOrders = selectedOrder ? [selectedOrder] : activeOrders;
-  const activeDeliveryCount = selectedOrder
+  const isLabTracking = trackedOrders.some((order) => order.orderType === "lab-test");
+  const activeOrderCount = selectedOrder
     ? (selectedOrder.status === "Delivered" || selectedOrder.status === "Completed" ? 0 : 1)
     : activeOrders.length || (demoStatus === "Delivered" ? 0 : 1);
   return <div className="page-section tracking-page">
-    <section className="tracking-overview"><span className="tracking-overview-icon"><Truck size={22} /></span><div><small>LIVE DELIVERY UPDATES</small><b>{selectedOrder ? `Order ${selectedOrder.id}` : `${activeDeliveryCount} active ${activeDeliveryCount === 1 ? "delivery" : "deliveries"}`}</b><span>{selectedOrder ? "Order status and delivery details." : "Track your pharmacy orders and lab collections."}</span></div></section>
+    <section className="tracking-overview"><span className="tracking-overview-icon">{isLabTracking ? <FlaskConical size={22} /> : <Truck size={22} />}</span><div><small>{isLabTracking ? "LIVE COLLECTION UPDATES" : "LIVE DELIVERY UPDATES"}</small><b>{selectedOrder ? `Order ${selectedOrder.id}` : `${activeOrderCount} active ${activeOrderCount === 1 ? "order" : "orders"}`}</b><span>{selectedOrder ? (isLabTracking ? "Home sample collection and payment details." : "Order status and delivery details.") : "Track pharmacy deliveries and lab collections."}</span></div></section>
     {trackedOrders.map((order) => <TrackingCard key={order.id} order={order} status={order.status} />)}
     {!selectedOrder && !activeOrders.length && <article className="tracking-card">
       <div className="tracking-card-header"><span className="tracking-card-icon"><Pill size={19} /></span><div><small>ORDER AAR-2052 · PHARMACY</small><h2>Paracetamol 650mg · Wellness essentials</h2></div><span className={`tracking-status ${demoStatus === "Delivered" ? "tracking-delivered" : ""}`}>{demoStatus}</span></div>
@@ -658,11 +763,14 @@ function TrackingPage({ orders, selectedOrder, demoStatus, onDemoStatus }) {
 
 function TrackingCard({ order, status }) {
   const isDelivered = status === "Delivered";
-  const step = isDelivered || status === "Completed" ? 3 : status === "Out for delivery" ? 2 : 1;
-  const steps = ["Order confirmed", "Preparing your order", "Out for delivery", "Delivered"];
+  const isLabOrder = order.orderType === "lab-test";
+  const step = isLabOrder ? 1 : isDelivered || status === "Completed" ? 3 : status === "Out for delivery" ? 2 : 1;
+  const steps = isLabOrder
+    ? ["Booking confirmed", "Home sample collection", "Sample processing", "Report ready"]
+    : ["Order confirmed", "Preparing your order", "Out for delivery", "Delivered"];
   return <article className="tracking-card">
-    <div className="tracking-card-header"><span className="tracking-card-icon"><ShoppingBag size={19} /></span><div><small>ORDER {order.id} · {order.kind.toUpperCase()}</small><h2>{order.title}</h2></div><span className={`tracking-status ${isDelivered ? "tracking-delivered" : ""}`}>{status}</span></div>
-    <div className="tracking-meta"><span><Package size={15} /> Order total ₹{order.amount}</span><span><Clock3 size={15} /> {isDelivered ? order.date : "Estimated today, 3:30–4:00 PM"}</span>{order.address && <span><MapPin size={15} /> {order.address.address}, {order.address.city} {order.address.pincode}</span>}</div>
+    <div className="tracking-card-header"><span className="tracking-card-icon">{isLabOrder ? <FlaskConical size={19} /> : <ShoppingBag size={19} />}</span><div><small>ORDER {order.id} · {order.kind.toUpperCase()}</small><h2>{order.title}</h2></div><span className={`tracking-status ${isDelivered ? "tracking-delivered" : ""}`}>{status}</span></div>
+    <div className="tracking-meta"><span><Package size={15} /> {isLabOrder ? "Test total" : "Order total"} ₹{formatRupees(order.amount)}</span>{isLabOrder && <><span><CheckCircle2 size={15} /> Advance paid ₹{formatRupees(order.advancePaid)}</span><span><Clock3 size={15} /> Balance due at collection ₹{formatRupees(order.balanceDue)}</span></>}{!isLabOrder && <span><Clock3 size={15} /> {isDelivered ? order.date : "Estimated today, 3:30–4:00 PM"}</span>}{order.address && <span><MapPin size={15} /> {isLabOrder ? "Collect at" : "Deliver to"} {order.address.address}, {order.address.city} {order.address.pincode}</span>}</div>
     <TrackingSteps steps={steps} currentStep={step} />
   </article>;
 }
@@ -670,6 +778,9 @@ function TrackingCard({ order, status }) {
 function CartDrawer({ cart, setCart, onClose, onCheckout }) {
   const count = cart.reduce((sum, item) => sum + item.quantity, 0);
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const isLabOrder = cart.some((item) => item.orderType === "lab-test");
+  const advanceDue = total / 2;
+  const labName = cart.find((item) => item.orderType === "lab-test")?.labName;
   const pharmacyName = cart.find((item) => item.pharmacyName)?.pharmacyName;
   const updateQuantity = (name, itemPharmacyName, delta) => setCart((current) => current
     .map((item) => item.name === name && item.pharmacyName === itemPharmacyName ? { ...item, quantity: item.quantity + delta } : item)
@@ -679,14 +790,15 @@ function CartDrawer({ cart, setCart, onClose, onCheckout }) {
     <aside className="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title">
       <header className="cart-drawer-header"><div><small>YOUR ORDER</small><h2 id="cart-drawer-title">Your bag <span>{count}</span></h2></div><button type="button" className="cart-drawer-close" aria-label="Close your bag" onClick={onClose}><X size={19} /></button></header>
       {pharmacyName && <div className="cart-drawer-store"><Pill size={17} /><span>Ordering from <b>{pharmacyName}</b></span></div>}
+      {isLabOrder && <div className="cart-drawer-store"><FlaskConical size={17} /><span>Home collection by <b>{labName}</b></span></div>}
       {cart.length ? <>
         <div className="cart-drawer-items">{cart.map((item) => <article className="cart-drawer-item" key={`${item.pharmacyName || "other"}-${item.name}`}>
           <span className="cart-drawer-item-icon">{item.glyph || <Pill size={19} />}</span>
-          <div className="cart-drawer-item-info"><b>{item.name}</b><small>₹{item.price} each</small><strong>₹{item.price * item.quantity}</strong></div>
+          <div className="cart-drawer-item-info"><b>{item.name}</b><small>₹{formatRupees(item.price)} each</small><strong>₹{formatRupees(item.price * item.quantity)}</strong></div>
           <div className="cart-drawer-controls"><button type="button" aria-label={`Decrease ${item.name} quantity`} onClick={() => updateQuantity(item.name, item.pharmacyName, -1)}>−</button><b>{item.quantity}</b><button type="button" aria-label={`Increase ${item.name} quantity`} onClick={() => updateQuantity(item.name, item.pharmacyName, 1)}>+</button></div>
           <button type="button" className="cart-drawer-remove" aria-label={`Remove ${item.name}`} onClick={() => removeItem(item)}><X size={15} /></button>
         </article>)}</div>
-        <footer className="cart-drawer-footer"><div><span>Subtotal</span><b>₹{total}</b></div><small>Delivery and payment options at checkout.</small><button className="button button-primary" type="button" onClick={onCheckout}>Continue to checkout <ArrowRight size={16} /></button></footer>
+        <footer className="cart-drawer-footer"><div><span>{isLabOrder ? "Full test price" : "Subtotal"}</span><b>₹{formatRupees(total)}</b></div>{isLabOrder && <div><span>50% advance to book</span><b>₹{formatRupees(advanceDue)}</b></div>}<small>{isLabOrder ? `Balance ₹${formatRupees(advanceDue)} due at sample collection.` : "Delivery and payment options at checkout."}</small><button className="button button-primary" type="button" onClick={onCheckout}>{isLabOrder ? `Pay ₹${formatRupees(advanceDue)} & book collection` : "Continue to checkout"} <ArrowRight size={16} /></button></footer>
       </> : <div className="cart-drawer-empty"><ShoppingCart size={30} /><b>Your bag is empty</b><small>Add medicines to get started.</small><button type="button" onClick={onClose}>Continue shopping</button></div>}
     </aside>
   </div>;
@@ -698,11 +810,13 @@ function PharmacyCheckoutModal({ user, cart, onClose, onPlaceOrder }) {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Hyderabad");
   const [pincode, setPincode] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("Cash on delivery");
+  const isLabOrder = cart.some((item) => item.orderType === "lab-test");
+  const [paymentMethod, setPaymentMethod] = useState(isLabOrder ? "UPI" : "Cash on delivery");
   const [upiId, setUpiId] = useState("");
   const [cardDetails, setCardDetails] = useState({ name: "", number: "", expiry: "", cvv: "" });
   const [error, setError] = useState("");
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const advanceDue = total / 2;
   const submit = (event) => {
     event.preventDefault();
     if (!name.trim() || !/^[6-9]\d{9}$/.test(phone) || !address.trim() || !city.trim() || !/^\d{6}$/.test(pincode)) {
@@ -726,23 +840,23 @@ function PharmacyCheckoutModal({ user, cart, onClose, onPlaceOrder }) {
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal-card checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
     <button type="button" className="modal-close" onClick={onClose} aria-label="Close checkout"><X size={18} /></button>
-    <span className="modal-kicker">DELIVERY & PAYMENT</span><h2 id="checkout-title">Complete your order</h2>
-    <p className="checkout-subtitle">{cart.length} item{cart.length === 1 ? "" : "s"} · Total ₹{total}</p>
+    <span className="modal-kicker">{isLabOrder ? "HOME COLLECTION & PAYMENT" : "DELIVERY & PAYMENT"}</span><h2 id="checkout-title">{isLabOrder ? "Book home collection" : "Complete your order"}</h2>
+    <p className="checkout-subtitle">{cart.length} item{cart.length === 1 ? "" : "s"} · {isLabOrder ? `Test total ₹${formatRupees(total)} · 50% advance ₹${formatRupees(advanceDue)} · Balance ₹${formatRupees(advanceDue)}` : `Total ₹${formatRupees(total)}`}</p>
     <form onSubmit={submit}>
       <div className="checkout-layout">
         <section className="checkout-delivery">
-          <h3>Delivery details</h3>
+          <h3>{isLabOrder ? "Collection details" : "Delivery details"}</h3>
           <div className="checkout-fields">
             <label>Full name<input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required /></label>
             <label>Mobile number<input autoComplete="tel" inputMode="numeric" maxLength={10} value={phone} onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))} required /></label>
-            <label className="checkout-address">Delivery address<textarea autoComplete="street-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House / flat, street, landmark" required /></label>
+            <label className="checkout-address">{isLabOrder ? "Home collection address" : "Delivery address"}<textarea autoComplete="street-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House / flat, street, landmark" required /></label>
             <label>City<input autoComplete="address-level2" value={city} onChange={(event) => setCity(event.target.value)} required /></label>
             <label>Pincode<input autoComplete="postal-code" inputMode="numeric" maxLength={6} value={pincode} onChange={(event) => setPincode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
           </div>
         </section>
         <section className="checkout-payment-panel">
-          <h3>Payment options</h3>
-          <fieldset className="checkout-payment"><legend>Choose a payment method</legend>{["UPI", "Card", "Cash on delivery"].map((method) => <label key={method}><input type="radio" name="payment-method" value={method} checked={paymentMethod === method} onChange={() => { setPaymentMethod(method); setError(""); }} />{method}</label>)}</fieldset>
+          <h3>{isLabOrder ? "50% advance payment" : "Payment options"}</h3>
+          <fieldset className="checkout-payment"><legend>{isLabOrder ? `Pay ₹${formatRupees(advanceDue)} now to book` : "Choose a payment method"}</legend>{(isLabOrder ? ["UPI", "Card"] : ["UPI", "Card", "Cash on delivery"]).map((method) => <label key={method}><input type="radio" name="payment-method" value={method} checked={paymentMethod === method} onChange={() => { setPaymentMethod(method); setError(""); }} />{method}</label>)}</fieldset>
           {paymentMethod === "UPI" && <label className="checkout-payment-entry">UPI ID<input autoComplete="off" inputMode="email" value={upiId} onChange={(event) => setUpiId(event.target.value.replace(/\s/g, ""))} placeholder="name@bank" aria-describedby="checkout-upi-note" /><small id="checkout-upi-note">Demo checkout only. No payment will be sent.</small></label>}
           {paymentMethod === "Card" && <div className="checkout-card-fields">
             <label className="checkout-card-wide">Name on card<input autoComplete="cc-name" value={cardDetails.name} onChange={(event) => setCardDetails((current) => ({ ...current, name: event.target.value }))} placeholder="Name as shown on card" /></label>
@@ -752,11 +866,12 @@ function PharmacyCheckoutModal({ user, cart, onClose, onPlaceOrder }) {
             <small className="checkout-card-note">Demo checkout only. Card details are not stored or charged.</small>
           </div>}
           {paymentMethod === "Cash on delivery" && <p className="checkout-cod-note">Pay with cash when your order is delivered.</p>}
+          {isLabOrder && <p className="checkout-cod-note">Remaining balance ₹{formatRupees(advanceDue)} is due when the sample is collected.</p>}
         </section>
         <footer className="checkout-actions">
-          <small className="checkout-demo-note">Demo checkout — no real payment will be collected.</small>
+          <small className="checkout-demo-note">{isLabOrder ? "Demo checkout — the 50% advance is recorded, but no real payment will be collected." : "Demo checkout — no real payment will be collected."}</small>
           {error && <p className="checkout-error" role="alert">{error}</p>}
-          <button className="button button-primary checkout-submit" type="submit">Place order · ₹{total} <ArrowRight size={16} /></button>
+          <button className="button button-primary checkout-submit" type="submit">{isLabOrder ? `Pay ₹${formatRupees(advanceDue)} & book collection` : `Place order · ₹${formatRupees(total)}`} <ArrowRight size={16} /></button>
         </footer>
       </div>
     </form>
@@ -774,6 +889,8 @@ function ScheduledBanner({ type, onClick }) {
 
 function OrdersPage({ cart, setCart, placed, status, setStatus, onCheckout, onTrack }) {
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const isLabOrder = cart.some((item) => item.orderType === "lab-test");
+  const advanceDue = total / 2;
   const pharmacyName = cart.find((item) => item.pharmacyName)?.pharmacyName;
   const orders = [...placed, { id: "AAR-2048", title: "Vitamin D + CBC panel", kind: "Lab tests", date: "12 Jul 2026", amount: 1098, status: "Completed", icon: FlaskConical }, { id: "AAR-2041", title: "Everyday wellness essentials", kind: "Pharmacy", date: "10 Jul 2026", amount: 429, status: "Delivered", icon: Pill }];
   const visible = status === "All" ? orders : orders.filter((order) => order.status === status);
@@ -785,24 +902,24 @@ function OrdersPage({ cart, setCart, placed, status, setStatus, onCheckout, onTr
     <div className="order-layout"><section className="order-history"><div className="section-heading-row"><SectionTitle title="Order history" /><label className="select-wrap"><select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter orders"><option>All</option><option>Processing</option><option>Completed</option><option>Delivered</option></select><SlidersHorizontal size={14} /></label></div>
       {visible.length ? <div className="order-list">{visible.map((order) => <OrderCard key={order.id} order={order} onTrack={() => onTrack(order)} />)}</div> : <EmptyState title="No orders in this category" text="Your bookings and orders will show up here." />}
     </section>
-    <aside className="bag-card"><div className="bag-heading"><span><ShoppingBag size={19} /></span><h3>Your bag</h3><b>{cart.reduce((sum, item) => sum + item.quantity, 0)}</b></div>{cart.length ? <><div className="bag-items">{pharmacyName && <div className="bag-store"><Pill size={14} /> Ordering from <b>{pharmacyName}</b></div>}{cart.map((item) => <div className="bag-item" key={`${item.pharmacyName || "other"}-${item.name}`}><span>{item.glyph || <Pill size={17} />}</span><div><b>{item.name}</b><small>₹{item.price} each · ₹{item.price * item.quantity}</small></div><div className="bag-quantity"><button type="button" aria-label={`Decrease ${item.name} quantity`} onClick={() => changeQuantity(item.name, item.pharmacyName, -1)}>−</button><b>{item.quantity}</b><button type="button" aria-label={`Increase ${item.name} quantity`} onClick={() => changeQuantity(item.name, item.pharmacyName, 1)}>+</button></div><button type="button" className="bag-remove" aria-label={`Remove ${item.name}`} onClick={() => setCart((current) => current.filter((entry) => entry.name !== item.name || entry.pharmacyName !== item.pharmacyName))}><X size={15} /></button></div>)}</div><div className="bag-total"><span>Subtotal</span><b>₹{total}</b></div><Button onClick={onCheckout}>Checkout <ArrowRight size={16} /></Button><small className="bag-note"><ShieldCheck size={13} /> Secure checkout · Free delivery</small></> : <div className="empty-bag"><ShoppingCart size={24} /><b>Your bag is empty</b><small>Add a test or medicine to place an order.</small></div>}</aside></div>
+    <aside className="bag-card"><div className="bag-heading"><span><ShoppingBag size={19} /></span><h3>Your bag</h3><b>{cart.reduce((sum, item) => sum + item.quantity, 0)}</b></div>{cart.length ? <><div className="bag-items">{pharmacyName && <div className="bag-store"><Pill size={14} /> Ordering from <b>{pharmacyName}</b></div>}{cart.map((item) => <div className="bag-item" key={`${item.pharmacyName || "other"}-${item.name}`}><span>{item.glyph || <Pill size={17} />}</span><div><b>{item.name}</b><small>₹{formatRupees(item.price)} each · ₹{formatRupees(item.price * item.quantity)}</small></div><div className="bag-quantity"><button type="button" aria-label={`Decrease ${item.name} quantity`} onClick={() => changeQuantity(item.name, item.pharmacyName, -1)}>−</button><b>{item.quantity}</b><button type="button" aria-label={`Increase ${item.name} quantity`} onClick={() => changeQuantity(item.name, item.pharmacyName, 1)}>+</button></div><button type="button" className="bag-remove" aria-label={`Remove ${item.name}`} onClick={() => setCart((current) => current.filter((entry) => entry.name !== item.name || entry.pharmacyName !== item.pharmacyName))}><X size={15} /></button></div>)}</div><div className="bag-total"><span>Full test price</span><b>₹{formatRupees(total)}</b></div>{isLabOrder && <div className="bag-total bag-advance-total"><span>50% advance to book</span><b>₹{formatRupees(advanceDue)}</b></div>}<Button onClick={onCheckout}>{isLabOrder ? `Pay ₹${formatRupees(advanceDue)} & book collection` : "Checkout"} <ArrowRight size={16} /></Button><small className="bag-note"><ShieldCheck size={13} /> {isLabOrder ? "Balance due at sample collection" : "Secure checkout · Free delivery"}</small></> : <div className="empty-bag"><ShoppingCart size={24} /><b>Your bag is empty</b><small>Add a test or medicine to place an order.</small></div>}</aside></div>
   </div>;
 }
 
 function OrderCard({ order, onTrack }) {
   const Icon = order.icon || Package;
-  return <article className="order-card"><span className="order-icon"><Icon size={19} /></span><div className="order-card-info"><small>{order.id} · {order.date}</small><b>{order.title}</b><span>{order.kind} · ₹{order.amount}</span></div><span className={`order-status status-${order.status.toLowerCase()}`}>{order.status}</span><button className="order-track-button" type="button" onClick={onTrack}>Track order <ChevronRight size={15} /></button></article>;
+  return <article className="order-card"><span className="order-icon"><Icon size={19} /></span><div className="order-card-info"><small>{order.id} · {order.date}</small><b>{order.title}</b><span>{order.kind} · Total ₹{formatRupees(order.amount)}{order.advancePaid != null && ` · Advance paid ₹${formatRupees(order.advancePaid)} · Balance due ₹${formatRupees(order.balanceDue)}`}</span></div><span className={`order-status status-${order.status.toLowerCase()}`}>{order.status}</span><button className="order-track-button" type="button" onClick={onTrack}>Track order <ChevronRight size={15} /></button></article>;
 }
 
 function ProfilePage({ user, onSignOut, onToast }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState([user.firstName, user.lastName].filter(Boolean).join(" ") || "Aartap Member");
-  const [email, setEmail] = useState("member@example.com");
+  const [email, setEmail] = useState(user.email || (user.guest ? "" : "member@example.com"));
   const initials = name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   return <div className="page-section profile-page">
     <section className="profile-hero"><div className="profile-avatar"><span>{initials}</span><i><Check size={11} /></i></div><div><span className="profile-member-tag"><ShieldCheck size={13} /> VERIFIED MEMBER</span><h2>{name}</h2><p>Member since October 2026 · Hyderabad, India</p></div><Button variant="outline" onClick={() => setEditing((value) => !value)}>{editing ? "Done editing" : "Edit profile"}</Button></section>
     {editing && <section className="profile-edit"><label>Full name<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>Email address<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><Button onClick={() => { setEditing(false); onToast("Your profile has been updated."); }}>Save changes <Check size={15} /></Button></section>}
-    <div className="profile-layout"><div className="profile-main"><section className="profile-card"><div className="section-title"><h2>Personal information</h2><button onClick={() => setEditing((value) => !value)}>Edit <ArrowUpRight size={14} /></button></div><div className="detail-grid"><ProfileDetail icon={Phone} label="Mobile number" value={`+91 ${user.phone.slice(0, 2)}•••••${user.phone.slice(-3)}`} verified /><ProfileDetail icon={MessageCircle} label="Email address" value={email} /><ProfileDetail icon={MapPin} label="Location" value="Hyderabad, Telangana" /><ProfileDetail icon={CalendarDays} label="Date of birth" value="Not added yet" /></div></section><section className="profile-card"><div className="section-title"><h2>Health &amp; preferences</h2><button onClick={() => onToast("Health preferences updated.")}>Manage <ArrowUpRight size={14} /></button></div><div className="preferences-list"><button onClick={() => onToast("No health documents have been added yet.")}><span><ClipboardList size={18} /></span><div><b>Health records</b><small>Your reports, prescriptions and care notes</small></div><ChevronRight size={17} /></button><button onClick={() => onToast("Notification preferences opened.")}><span><Bell size={18} /></span><div><b>Notifications</b><small>Reminders and updates from Aartap</small></div><ChevronRight size={17} /></button><button onClick={() => onToast("Privacy and security settings are up to date.")}><span><ShieldCheck size={18} /></span><div><b>Privacy &amp; security</b><small>Your information is encrypted and private</small></div><ChevronRight size={17} /></button></div></section></div><aside className="profile-side"><div className="care-support-card"><Sparkles size={22} /><h3>Care, whenever<br />you need it.</h3><p>Questions about your care? Our team is here to help.</p><Button variant="outline" onClick={() => onToast("Our care team will be in touch soon.")}>Contact support <ArrowRight size={15} /></Button></div><button className="signout-button" onClick={onSignOut}><LogOut size={17} /> Sign out of Aartap <ChevronRight size={16} /></button></aside></div>
+    <div className="profile-layout"><div className="profile-main"><section className="profile-card"><div className="section-title"><h2>Personal information</h2><button onClick={() => setEditing((value) => !value)}>Edit <ArrowUpRight size={14} /></button></div><div className="detail-grid"><ProfileDetail icon={Phone} label="Mobile number" value={user.phone ? `+91 ${user.phone.slice(0, 2)}•••••${user.phone.slice(-3)}` : "Not provided"} verified={Boolean(user.phone)} /><ProfileDetail icon={MessageCircle} label="Email address" value={email || "Not added yet"} /><ProfileDetail icon={MapPin} label="Location" value="Hyderabad, Telangana" /><ProfileDetail icon={CalendarDays} label="Date of birth" value="Not added yet" /></div></section><section className="profile-card"><div className="section-title"><h2>Health &amp; preferences</h2><button onClick={() => onToast("Health preferences updated.")}>Manage <ArrowUpRight size={14} /></button></div><div className="preferences-list"><button onClick={() => onToast("No health documents have been added yet.")}><span><ClipboardList size={18} /></span><div><b>Health records</b><small>Your reports, prescriptions and care notes</small></div><ChevronRight size={17} /></button><button onClick={() => onToast("Notification preferences opened.")}><span><Bell size={18} /></span><div><b>Notifications</b><small>Reminders and updates from Aartap</small></div><ChevronRight size={17} /></button><button onClick={() => onToast("Privacy and security settings are up to date.")}><span><ShieldCheck size={18} /></span><div><b>Privacy &amp; security</b><small>Your information is encrypted and private</small></div><ChevronRight size={17} /></button></div></section></div><aside className="profile-side"><div className="care-support-card"><Sparkles size={22} /><h3>Care, whenever<br />you need it.</h3><p>Questions about your care? Our team is here to help.</p><Button variant="outline" onClick={() => onToast("Our care team will be in touch soon.")}>Contact support <ArrowRight size={15} /></Button></div><button className="signout-button" onClick={onSignOut}><LogOut size={17} /> Sign out of Aartap <ChevronRight size={16} /></button></aside></div>
   </div>;
 }
 
