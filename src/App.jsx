@@ -412,7 +412,7 @@ function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <Logo />
-      <div className="sidebar-caption">YOUR HEALTH, CONNECTED</div>
+      <div className="sidebar-caption">REDEFINING HEALTHCARE</div>
       <nav className="side-nav" aria-label="Main navigation">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={page === id ? "selected" : ""} onClick={() => go(id)}><Icon size={19} strokeWidth={1.8} /><span>{label}</span>{page === id && <i />}</button>)}</nav>
       <div className="sidebar-help"><span><Sparkles size={17} /></span><b>Here for your health</b><small>Need a hand? We’re just a call away.</small><button onClick={() => setToast("Our care team will be in touch soon.")}>Talk to care team <ArrowRight size={14} /></button></div>
     </aside>

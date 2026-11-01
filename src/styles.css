@@ -352,8 +352,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .select-wrap { position: relative; display: flex; align-items: center; gap: 5px; color: #6f786f; }
 .select-wrap select { appearance: none; padding: 5px 19px 5px 8px; color: #59655c; border: 1px solid #eae8e0; border-radius: 7px; background: white; font-size: 12px; }
 .select-wrap svg { position: absolute; right: 6px; pointer-events: none; }
-.order-list { display: grid; }
-.order-card { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 13px 0; border-top: 1px solid #f0eee7; }
+.order-list { display: grid; gap: 10px; }
+.order-card { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 15px; border-top: 1px solid #f0eee7; }
 .order-icon { width: 37px; height: 37px; display: grid; flex: 0 0 auto; place-items: center; color: var(--green); border-radius: 10px; background: #edf3ea; }
 .order-card-info { min-width: 0; flex: 1; }
 .order-card-info small, .order-card-info b, .order-card-info > span { display: block; }
