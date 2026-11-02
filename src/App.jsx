@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
-  CheckCircle2, ChevronRight, Clock3, FlaskConical, Heart, Home, MapPin,
+  CheckCircle2, ChevronRight, Clock3, FileCheck2, FileText, FlaskConical, Heart, Home, MapPin,
   Mail, MessageCircle, Package, Phone, Pill, Plus, Search, ShieldCheck, ShoppingBag,
   ShoppingCart, SlidersHorizontal, Sparkles, Stethoscope, Truck, UserRound,
-  Video, X, LogOut, Upload, Star, Mic, ClipboardList,
+  Video, X, LogOut, Upload, Star, Mic, ClipboardList, Wallet,
 } from "lucide-react";
 import { doctors, pharmacies, labs, medicines, tests, initialAppointments, completedAppointments } from "./data.js";
 import artapLogo from "../assets/artap-logo.jpeg";
 
 const SESSION_KEY = "aartap-demo-user";
+const DOCTOR_AVAILABILITY_KEY = "aartap-doctor-online";
+const PHARMACY_DISPATCH_KEY = "aartap-pharmacy-dispatch-active";
+const PHARMACY_ORDERS_KEY = "aartap-pharmacy-orders";
+const LAB_REQUESTS_KEY = "aartap-lab-requests";
 const pharmacyCatalogs = {
   "Apollo Pharmacy": medicines,
   "MedPlus Pharmacy": medicines.filter((item) => item.name !== "Vicks VapoRub"),
@@ -42,6 +46,89 @@ const readSession = () => {
     return null;
   }
 };
+const readPortalRecords = (key) => JSON.parse(localStorage.getItem(key) || "[]");
+const readDoctorAvailability = () => localStorage.getItem(DOCTOR_AVAILABILITY_KEY) !== "false";
+const savePortalRecord = (key, record) => {
+  const records = readPortalRecords(key);
+  const updatedRecords = [record, ...records.filter((item) => item.id !== record.id)];
+  localStorage.setItem(key, JSON.stringify(updatedRecords));
+  window.dispatchEvent(new Event("aartap-portal-update"));
+};
+const updatePortalRecord = (key, id, updates, fallbackRecord = {}) => {
+  const records = readPortalRecords(key);
+  const currentRecord = records.find((item) => item.id === id) || { ...fallbackRecord, id };
+  savePortalRecord(key, { ...currentRecord, ...updates });
+};
+
+const samplePrescriptions = [
+  { id: "AP-9042", patientName: "Aravind Swamy", diagnosis: "Muscle soreness", remedy: "Arnica", potency: "200C", form: "Globules", status: "New" },
+  { id: "AP-9043", patientName: "Priya Sharma", diagnosis: "Indigestion", remedy: "Nux Vomica", potency: "30C", form: "Drops", status: "New" },
+  { id: "AP-9044", patientName: "Priya Sharma", diagnosis: "Seasonal allergy", remedy: "Rhus Tox", potency: "30C", form: "Globules", status: "New" },
+  { id: "AP-9045", patientName: "Aravind Swamy", diagnosis: "Joint pain", remedy: "Arnica", potency: "200C", form: "Globules", status: "New" },
+  { id: "AP-9046", patientName: "Priya Sharma", diagnosis: "Indigestion", remedy: "Nux Vomica", potency: "30C", form: "Drops", status: "New" },
+  { id: "AP-9047", patientName: "Priya Sharma", diagnosis: "Seasonal allergy", remedy: "Rhus Tox", potency: "30C", form: "Globules", status: "New" },
+];
+const sampleLabRequests = [
+  { id: "20230001", patientName: "Dr. Rohan", address: "Band, Manikonda", slot: "08:00 AM – 09:30 AM", phlebotomist: "Rohan D.", test: "Comprehensive Metabolic Panel", status: "Scheduled", paymentStatus: "50/50", sampleStatus: "Scheduled", advancePaid: 400, balanceDue: 400 },
+  { id: "20230002", patientName: "Dr. Kim", address: "Paul, Farm", slot: "08:00 AM – 09:30 AM", phlebotomist: "Rohan D.", test: "Comprehensive Metabolic Panel", status: "Scheduled", paymentStatus: "50/50", sampleStatus: "Scheduled", advancePaid: 600, balanceDue: 600 },
+  { id: "20230003", patientName: "Dr. Rohan", address: "Pawl, Mam, Band", slot: "08:00 AM – 09:30 AM", phlebotomist: "Rohan D.", test: "Comprehensive Metabolic Panel", status: "Scheduled", paymentStatus: "50/50", sampleStatus: "Scheduled", advancePaid: 350, balanceDue: 350 },
+  { id: "20230004", patientName: "Dr. Annin", address: "Pawl, Mam, Farm", slot: "09:30 AM – 11:00 AM", phlebotomist: "P. Nandini", test: "Comprehensive Metabolic Panel", status: "Scheduled", paymentStatus: "50/50", sampleStatus: "Scheduled", advancePaid: 500, balanceDue: 500 },
+];
+const doctorPortalSections = [
+  { label: "Patient Queue", icon: UserRound, title: "Doctor Suite Dashboard", description: "Your upcoming video consultations and patient queue." },
+  { label: "Appointments", icon: CalendarDays, title: "Appointments", description: "Today's scheduled patient consultations." },
+  { label: "Prescriptions", icon: ClipboardList, title: "Prescriptions", description: "Remedies you've sent to the pharmacy." },
+  { label: "Lab Orders", icon: FlaskConical, title: "Lab Orders", description: "Patient diagnostic requests and digital reports." },
+  { label: "Earnings", icon: ShoppingBag, title: "Earnings", description: "A summary of your consultation earnings." },
+  { label: "Schedule", icon: CalendarDays, title: "Schedule", description: "Manage your availability for patient consults." },
+];
+const pharmacyPortalSections = [
+  { label: "Prescriptions", icon: ClipboardList, title: "Pharmacy Dispensing Hub", description: "Live homeopathic prescriptions received from doctors." },
+  { label: "Packing Station", icon: Package, title: "Packing Station", description: "Verify and prepare prescriptions before dispatch." },
+  { label: "30-Min Dispatch", icon: Truck, title: "30-Min Dispatch", description: "Track prescriptions handed to the rapid delivery fleet." },
+  { label: "Inventory Stock", icon: Pill, title: "Inventory Stock", description: "Monitor remedies, potencies, and dispensing supplies." },
+  { label: "Settlements", icon: ShoppingBag, title: "Weekly Settlements", description: "Review delivery and prescription settlement activity." },
+];
+const labPortalSections = [
+  { label: "Home Visits", icon: Home, title: "Diagnostic Lab & Home Collection Hub", description: "Manage home blood collections and digital reports." },
+  { label: "Phlebotomist Fleet", icon: Truck, title: "Phlebotomist Fleet", description: "Review technician routes and active home visits." },
+  { label: "Sample Processing", icon: FlaskConical, title: "Sample Processing", description: "Update received samples and processing milestones." },
+  { label: "Upload Reports", icon: Upload, title: "Upload Reports", description: "Deliver verified PDF test reports to patients and doctors." },
+  { label: "Payouts", icon: ShoppingBag, title: "Payouts", description: "Review 50/50 collection payment reconciliation." },
+  { label: "Profile", icon: UserRound, title: "Lab Profile", description: "View diagnostic centre and account details." },
+];
+const initialPharmacyInventory = [
+  { id: "reckeweg-r1", name: "Dr. Reckeweg R1", detail: "German dilution · 22 ml", stock: 4, unit: "left", alert: "Low" },
+  { id: "reckeweg-r2", name: "Dr. Reckeweg R2", detail: "German dilution · 22 ml", stock: 12, unit: "left" },
+  { id: "sbl-arnica-30", name: "SBL Arnica Mont 30", detail: "Indian potency · 10 g", stock: 12, unit: "left" },
+  { id: "sbl-nux-30", name: "SBL Nux Vomica 30", detail: "Indian potency · 10 g", stock: 18, unit: "left" },
+  { id: "sugar-globules", name: "Sugar Globules 450g", detail: "Dispensing supplies", stock: 20, unit: "left" },
+  { id: "alcohol-stock", name: "Alcohol stock", detail: "Dispensing supplies", stock: 0, unit: "left", alert: "Out of Stock" },
+];
+
+function usePortalRecords(key, seedRecords) {
+  const [records, setRecords] = useState(() => {
+    const storedRecords = readPortalRecords(key);
+    return [...storedRecords, ...seedRecords.filter((seed) => !storedRecords.some((item) => item.id === seed.id))];
+  });
+
+  useEffect(() => {
+    const refresh = () => {
+      const storedRecords = readPortalRecords(key);
+      setRecords([...storedRecords, ...seedRecords.filter((seed) => !storedRecords.some((item) => item.id === seed.id))]);
+    };
+    const interval = window.setInterval(refresh, 3000);
+    window.addEventListener("storage", refresh);
+    window.addEventListener("aartap-portal-update", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("aartap-portal-update", refresh);
+    };
+  }, [key, seedRecords]);
+
+  return records;
+}
 
 function Logo({ compact = false }) {
   return <a className={`logo ${compact ? "logo-compact" : ""}`} href="#" aria-label="Aartap">
@@ -135,6 +222,7 @@ function Login({ onLogin }) {
     const user = {
       ...(authMethod === "phone" ? { phone } : {}),
       ...(authMethod === "email" || authMode === "register" ? { email: email.trim().toLowerCase() } : {}),
+      role: signupCategory || "patient",
       signedInAt: new Date().toISOString(),
       ...(authMode === "register" ? { firstName: firstName.trim(), lastName: lastName.trim() } : {}),
     };
@@ -219,6 +307,300 @@ function Login({ onLogin }) {
   </main>;
 }
 
+function OperationsDashboard({ role, user, onSignOut }) {
+  const [online, setOnline] = useState(readDoctorAvailability);
+  const [dispatchActive, setDispatchActive] = useState(() => localStorage.getItem(PHARMACY_DISPATCH_KEY) !== "false");
+  const [labFleetActive, setLabFleetActive] = useState(() => localStorage.getItem("aartap-lab-fleet-active") !== "false");
+  const [activePatient, setActivePatient] = useState(null);
+  const [toast, setToast] = useState("");
+  const [prescription, setPrescription] = useState({
+    patientName: "Aarav Mehta",
+    diagnosis: "Chronic Migraine",
+    remedy: "Natrum Mur",
+    potency: "200C",
+    form: "Sweet Globules",
+    labTest: "Complete Blood Count",
+  });
+  const [checklists, setChecklists] = useState({});
+  const [activeRoute, setActiveRoute] = useState(null);
+  const [activeDoctorSection, setActiveDoctorSection] = useState("Patient Queue");
+  const [activePharmacySection, setActivePharmacySection] = useState("Prescriptions");
+  const [activeLabSection, setActiveLabSection] = useState("Home Visits");
+  const [pharmacyInventory, setPharmacyInventory] = useState(initialPharmacyInventory);
+  const [selectedRemedies, setSelectedRemedies] = useState(["Natrum Mur 200C", "Pulsatilla 30C"]);
+  const [selectedForms, setSelectedForms] = useState(["Sweet Globules"]);
+  const [availableDays, setAvailableDays] = useState(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);
+  const pharmacyOrders = usePortalRecords(PHARMACY_ORDERS_KEY, samplePrescriptions);
+  const labRequests = usePortalRecords(LAB_REQUESTS_KEY, sampleLabRequests);
+  const labTechnicians = [...new Set(["Rohan D.", "P. Nandini", "S. Ramesh", ...labRequests.map((request) => request.phlebotomist).filter((name) => name && name !== "Assign technician")])];
+  const portal = {
+    doctors: { title: "Doctor Suite Dashboard", label: "DOCTOR SUITE", description: "Your virtual clinic, consultations, and care coordination." },
+    pharmacy: { title: "Pharmacy Dispensing Hub Dashboard", label: "PHARMACY PORTAL", description: "Manage prescriptions, packing, and local delivery dispatch." },
+    labs: { title: "Diagnostic Laboratory Operations Hub", label: "DIAGNOSTIC LAB PORTAL", description: "Coordinate home collections, field teams, and patient reports." },
+  }[role];
+  const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ")
+    || user.email?.split("@")[0]
+    || (role === "doctors" ? "Dr. Srinivas" : role === "pharmacy" ? "Pharmacy team" : "Lab Manager");
+  const initials = displayName.split(/\s+/).slice(-2).map((part) => part[0]).join("").toUpperCase();
+  const notify = (message) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3000);
+  };
+  const updatePrescription = (key, value) => setPrescription((current) => ({ ...current, [key]: value }));
+  const toggleSelection = (value, selection, setSelection) => {
+    setSelection((current) => current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value]);
+  };
+  const toggleAvailableDay = (day) => {
+    setAvailableDays((current) => current.includes(day)
+      ? current.filter((availableDay) => availableDay !== day)
+      : [...current, day]);
+  };
+  const submitDoctorCarePlan = () => {
+    if (!selectedRemedies.length || !selectedForms.length) {
+      notify("Select at least one remedy and dispensing form.");
+      return;
+    }
+    const forms = selectedForms;
+    selectedRemedies.forEach((selectedRemedy, index) => {
+      const [remedy, potency] = selectedRemedy.match(/^(.*)\s+(\S+)$/).slice(1);
+      forms.forEach((form) => savePortalRecord(PHARMACY_ORDERS_KEY, {
+        id: `rx-${Date.now()}-${index}-${form.replace(/\s/g, "-")}`,
+        patientName: prescription.patientName,
+        diagnosis: prescription.diagnosis,
+        remedy,
+        potency,
+        form,
+        status: "New",
+        createdAt: new Date().toISOString(),
+      }));
+    });
+    savePortalRecord(LAB_REQUESTS_KEY, {
+      id: `LAB-${Date.now()}`,
+      patientName: prescription.patientName,
+      diagnosis: prescription.diagnosis,
+      address: "Patient address on file · Hyderabad",
+      slot: "08:00 AM – 09:30 AM",
+      phlebotomist: "Assign technician",
+      test: prescription.labTest,
+      status: "Scheduled",
+      paymentStatus: "50% Advance Paid",
+      sampleStatus: "Scheduled",
+      advancePaid: 400,
+      balanceDue: 400,
+      createdAt: new Date().toISOString(),
+    });
+    notify("Prescription sent to pharmacy and lab test ordered.");
+  };
+  const togglePackingItem = (orderId, item) => {
+    setChecklists((current) => ({
+      ...current,
+      [orderId]: { ...current[orderId], [item]: !current[orderId]?.[item] },
+    }));
+  };
+  const dispatchPrescription = (order) => {
+    if (!dispatchActive) {
+      notify("30-minute dispatches are currently paused.");
+      return;
+    }
+    updatePortalRecord(PHARMACY_ORDERS_KEY, order.id, { ...order, status: "Dispatched" });
+    notify(`30-minute courier dispatched for ${order.patientName}.`);
+  };
+  const setPackingComplete = (orderId, complete) => {
+    setChecklists((current) => ({
+      ...current,
+      [orderId]: {
+        ...current[orderId],
+        "Packing complete": complete,
+        ...(complete ? {
+          "Prescription verified": true,
+          "Remedy packed": true,
+          "Address confirmed": true,
+        } : {
+          "Prescription verified": false,
+          "Remedy packed": false,
+          "Address confirmed": false,
+        }),
+      },
+    }));
+  };
+  const restockInventoryItem = (item) => {
+    setPharmacyInventory((current) => current.map((inventoryItem) => (
+      inventoryItem.id === item.id
+        ? { ...inventoryItem, stock: Math.max(inventoryItem.stock, 0) + 10, alert: undefined }
+        : inventoryItem
+    )));
+    notify(`${item.name} restocked.`);
+  };
+  const updateLabRequest = (request, updates) => {
+    updatePortalRecord(LAB_REQUESTS_KEY, request.id, { ...request, ...updates }, request);
+  };
+  const assignTechnician = (request, technician) => {
+    updateLabRequest(request, { phlebotomist: technician });
+    notify(`${technician} assigned to booking ${request.id}.`);
+  };
+  const markSampleReceived = (request) => {
+    const nextStatus = ({ Scheduled: "Received", Received: "Processing", Processing: "Ready for report" })[request.sampleStatus] || "Received";
+    updateLabRequest(request, { sampleStatus: nextStatus });
+    notify(`Sample ${request.id} updated to ${nextStatus}.`);
+  };
+  const recordBalancePayment = (request) => {
+    updateLabRequest(request, { balanceDue: 0, paymentStatus: "Paid in full" });
+    notify(`Balance payment recorded for booking ${request.id}.`);
+  };
+  const toggleLabFleet = () => {
+    const nextActive = !labFleetActive;
+    localStorage.setItem("aartap-lab-fleet-active", String(nextActive));
+    setLabFleetActive(nextActive);
+    notify(`Home collection fleet ${nextActive ? "activated" : "paused"}.`);
+  };
+  const uploadReport = (request, file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      notify("Choose a PDF file to upload the lab report.");
+      return;
+    }
+    updatePortalRecord(LAB_REQUESTS_KEY, request.id, {
+      ...request,
+      reportName: file.name,
+      status: "Report uploaded",
+      sampleStatus: "Report uploaded",
+    }, request);
+    notify(`PDF report uploaded for ${request.patientName}.`);
+  };
+  const renderFleetPanel = () => <section className="operations-panel lab-fleet-panel gold-frame-card">
+    <header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">FIELD OPERATIONS</span><h2>Phlebotomist fleet</h2><p>Live route coordination · Hyderabad</p></div><span className={`pharmacy-live-badge ${labFleetActive ? "" : "lab-fleet-paused"}`}><i /> {labFleetActive ? "Fleet active" : "Fleet paused"}</span></header>
+    <div className="fleet-map"><div className="map-road map-road-one" /><div className="map-road map-road-two" /><div className="map-road map-road-three" /><span className="map-pin map-pin-one"><MapPin size={20} /></span><span className="map-pin map-pin-two"><MapPin size={20} /></span><span className="map-pin map-pin-three"><MapPin size={20} /></span><span className="map-location-label">HYDERABAD</span></div>
+    <div className="fleet-technician-list">{labTechnicians.map((name, index) => <div key={name}><span className="operations-patient-avatar gold-avatar-ring">{name.split(" ").map((part) => part[0]).join("")}</span><span><b>{name}</b><small>{index === 0 ? "En route · Manikonda" : index === 1 ? "At collection · Banjara Hills" : "Available for collection"}</small></span><button type="button" className={`fleet-track-button ${activeRoute === name ? "active" : ""}`} onClick={() => { setActiveRoute(name); notify(`Showing live route for ${name} · demo GPS.`); }}>Track route</button></div>)}</div>
+  </section>;
+
+  return <div className={`operations-app operations-${role}`}>
+    {role === "doctors" && <aside className="doctor-sidebar">
+      <div className="doctor-sidebar-brand"><Logo /><span>Aartap</span><small>YOUR HEALTH, CONNECTED</small></div>
+      <nav className="doctor-sidebar-nav" aria-label="Doctor portal">
+        {doctorPortalSections.map(({ label, icon: Icon }) => <button type="button" key={label} className={activeDoctorSection === label ? "selected sidebar-pill-active" : ""} aria-current={activeDoctorSection === label ? "page" : undefined} onClick={() => setActiveDoctorSection(label)}><Icon size={17} /><span>{label}</span></button>)}
+      </nav>
+    </aside>}
+    {role === "pharmacy" && <aside className="doctor-sidebar pharmacy-sidebar">
+      <div className="doctor-sidebar-brand"><Logo /><span>Aartap</span><small>YOUR HEALTH, CONNECTED</small></div>
+      <nav className="doctor-sidebar-nav" aria-label="Pharmacy portal">
+        {pharmacyPortalSections.map(({ label, icon: Icon }) => <button type="button" key={label} className={activePharmacySection === label ? "selected sidebar-pill-active" : ""} aria-current={activePharmacySection === label ? "page" : undefined} onClick={() => setActivePharmacySection(label)}><Icon size={17} /><span>{label}</span></button>)}
+      </nav>
+    </aside>}
+    {role === "labs" && <aside className="doctor-sidebar lab-sidebar">
+      <div className="doctor-sidebar-brand"><Logo /><span>Aartap</span><small>YOUR HEALTH, CONNECTED</small></div>
+      <nav className="doctor-sidebar-nav" aria-label="Diagnostic lab portal">
+        {labPortalSections.map(({ label, icon: Icon }) => <button type="button" key={label} className={activeLabSection === label ? "selected sidebar-pill-active" : ""} aria-current={activeLabSection === label ? "page" : undefined} onClick={() => setActiveLabSection(label)}><Icon size={17} /><span>{label}</span></button>)}
+      </nav>
+    </aside>}
+    <div className={`operations-workspace ${role === "doctors" ? "doctor-workspace" : ""} ${role === "pharmacy" ? "pharmacy-workspace" : ""} ${role === "labs" ? "lab-workspace" : ""}`}>
+      <header className={`operations-topbar ${role === "doctors" ? "doctor-topbar" : ""} ${role === "pharmacy" ? "pharmacy-topbar" : ""} ${role === "labs" ? "lab-topbar" : ""}`}>
+        {role === "doctors"
+          ? <><div className="doctor-breadcrumb"><span>aartap</span><ChevronRight size={13} /><b>Doctor Portal</b></div><div className="doctor-topbar-actions"><button type="button" className="doctor-location"><MapPin size={14} /> Location</button><button type="button" className={`online-toggle doctor-online-toggle ${online ? "is-online" : ""}`} aria-pressed={online} onClick={() => { const nextOnline = !online; localStorage.setItem(DOCTOR_AVAILABILITY_KEY, String(nextOnline)); setOnline(nextOnline); window.dispatchEvent(new Event("aartap-provider-availability")); notify(`You are now ${nextOnline ? "online" : "offline"} for consults.`); }}><i /> {online ? "Online for Consults" : "Offline"}</button><span className="doctor-topbar-profile"><span className="operations-account-avatar gold-avatar-ring">{initials}</span>{displayName}</span><button type="button" className="doctor-signout" onClick={onSignOut} aria-label="Log out"><LogOut size={15} /></button></div></>
+          : role === "pharmacy"
+            ? <><div className="doctor-breadcrumb"><span>aartap</span><ChevronRight size={13} /><b>Pharmacy Portal</b></div><div className="pharmacy-topbar-actions"><button type="button" className={`online-toggle pharmacy-dispatch-toggle ${dispatchActive ? "is-online" : ""}`} aria-pressed={dispatchActive} onClick={() => { const nextActive = !dispatchActive; localStorage.setItem(PHARMACY_DISPATCH_KEY, String(nextActive)); setDispatchActive(nextActive); notify(`30-minute dispatches ${nextActive ? "activated" : "paused"}.`); }}><i /> {dispatchActive ? "Active for 30-Min Dispatches" : "Dispatches Paused"}</button><span className="doctor-topbar-profile"><span className="operations-account-avatar gold-avatar-ring">{initials}</span>{displayName}</span><button type="button" className="pharmacy-icon-button" aria-label="Notifications" onClick={() => notify("You’re all caught up on pharmacy notifications.")}><Bell size={16} /></button><button type="button" className="pharmacy-icon-button" aria-label="Log out" onClick={onSignOut}><LogOut size={16} /></button></div></>
+            : role === "labs"
+              ? <><div className="doctor-breadcrumb"><span>aartap</span><ChevronRight size={13} /><b>Diagnostic Lab Portal</b></div><div className="pharmacy-topbar-actions"><button type="button" className={`online-toggle pharmacy-dispatch-toggle ${labFleetActive ? "is-online" : ""}`} aria-pressed={labFleetActive} onClick={toggleLabFleet}><i /> {labFleetActive ? "Collection Fleet Active" : "Collection Fleet Paused"}</button><span className="doctor-topbar-profile"><span className="operations-account-avatar gold-avatar-ring">{initials}</span>{displayName}</span><button type="button" className="pharmacy-icon-button" aria-label="Notifications" onClick={() => notify("You’re all caught up on laboratory notifications.")}><Bell size={16} /></button><button type="button" className="pharmacy-icon-button" aria-label="Log out" onClick={onSignOut}><LogOut size={16} /></button></div></>
+              : <><div className="operations-brand"><Logo compact /><span>Aartap <small>CARE NETWORK</small></span></div><div className="operations-account"><span className="operations-account-avatar">{initials}</span><span className="operations-account-name">{displayName}<small>{portal.label}</small></span><button type="button" className="operations-signout" onClick={onSignOut}><LogOut size={16} /> Log out</button></div></>}
+      </header>
+      <main className={`operations-content ${role === "doctors" ? "doctor-content" : ""} ${role === "pharmacy" ? "pharmacy-content" : ""} ${role === "labs" ? "lab-content" : ""}`}>
+      {role === "pharmacy" && <div className="pharmacy-heading"><div><span className="operations-kicker gold-text-accent">PHARMACY OPERATIONS</span><h1>{pharmacyPortalSections.find((section) => section.label === activePharmacySection)?.title}<span className="heading-period">.</span></h1><p>{pharmacyPortalSections.find((section) => section.label === activePharmacySection)?.description}</p></div></div>}
+      {role === "labs" && <div className="pharmacy-heading lab-heading"><div><span className="operations-kicker gold-text-accent">DIAGNOSTIC LAB OPERATIONS</span><h1>{labPortalSections.find((section) => section.label === activeLabSection)?.title}<span className="heading-period">.</span></h1><p>{labPortalSections.find((section) => section.label === activeLabSection)?.description}</p></div><div className="operations-date"><CalendarDays size={15} /> {new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric" }).format(new Date())}</div></div>}
+      {role !== "doctors" && role !== "pharmacy" && role !== "labs" && <div className="operations-heading"><div><span className="eyebrow"><i /> {portal.label}</span><h1>{portal.title}<span className="heading-period">.</span></h1><p>{portal.description}</p></div><div className="operations-date"><CalendarDays size={16} /> {new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "short" }).format(new Date())}</div></div>}
+
+      {role === "doctors" && <>
+        <section className="doctor-welcome-heading"><div><span className="operations-kicker gold-text-accent">AARTAP HEALTHCARE</span><h1>{activeDoctorSection === "Patient Queue" ? `Welcome back, ${displayName}` : doctorPortalSections.find((section) => section.label === activeDoctorSection)?.title}<span className="heading-period">.</span></h1><p>{activeDoctorSection === "Patient Queue" ? "You have 8 consultations scheduled today" : doctorPortalSections.find((section) => section.label === activeDoctorSection)?.description}</p></div><div className="operations-date"><CalendarDays size={15} /> {new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric" }).format(new Date())}</div></section>
+        {activeDoctorSection === "Patient Queue" && <>
+        <section className="operations-stat-grid doctor-stat-grid">
+          <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><CalendarDays size={17} /></span><small>Today's Consults</small><b>8</b></article>
+          <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><FlaskConical size={17} /></span><small>Pending Lab Reports</small><b>{labRequests.filter((request) => !request.reportName).length + 1}</b></article>
+          <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><ClipboardList size={17} /></span><small>Prescriptions Dispensed</small><b>{12 + pharmacyOrders.filter((order) => order.status === "Dispatched").length}</b></article>
+          <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><ShoppingBag size={17} /></span><small>Monthly Earnings</small><b>₹64,500</b></article>
+        </section>
+        <div className="doctor-dashboard-grid">
+          <section className="operations-panel doctor-queue-panel gold-frame-card"><header className="operations-panel-heading"><h2>Upcoming Patient Video Queue</h2><span className="operations-live"><i /> {online ? "Online" : "Offline"}</span></header>
+            <div className="patient-queue">{[["Aarav Mehta", "Chronic Migraine", "10 mins", "AM"], ["Ananya Sharma", "Eczema", "25 mins", "AS"]].map(([name, concern, wait, initialsText]) => <article className="patient-queue-card doctor-patient-card" key={name}><span className="operations-patient-avatar gold-avatar-ring">{initialsText}</span><div className="operations-patient-info"><b>{name}</b><span>{concern}</span></div><span className="doctor-queue-wait">In queue · {wait}</span><button type="button" className="operations-button operations-button-primary" disabled={!online} onClick={() => setActivePatient({ name, concern })}><Video size={14} /> Start Video Call</button></article>)}</div>
+          </section>
+          <section className="operations-panel doctor-prescription-panel gold-frame-card"><header className="operations-panel-heading"><h2>Constitutional Prescription Pad</h2></header>
+            <label className="doctor-prescription-patient">Patient<select value={prescription.patientName} onChange={(event) => { const patientName = event.target.value; setPrescription((current) => ({ ...current, patientName, diagnosis: patientName === "Ananya Sharma" ? "Eczema" : "Chronic Migraine" })); }}><option>Aarav Mehta</option><option>Ananya Sharma</option></select></label>
+            <div className="doctor-remedy-list"><b>Homeopathic Remedies</b>{["Natrum Mur 200C", "Pulsatilla 30C"].map((item) => <label key={item}><input type="checkbox" checked={selectedRemedies.includes(item)} onChange={() => toggleSelection(item, selectedRemedies, setSelectedRemedies)} /><span>{item}</span></label>)}{["Sweet Globules", "Liquid Drops"].map((item) => <label key={item}><input type="checkbox" checked={selectedForms.includes(item)} onChange={() => toggleSelection(item, selectedForms, setSelectedForms)} /><span>{item}</span></label>)}</div>
+            <label className="doctor-lab-test">Lab test<select value={prescription.labTest} onChange={(event) => updatePrescription("labTest", event.target.value)}><option>Complete Blood Count</option><option>Thyroid Profile</option><option>Fasting Blood Sugar</option><option>Vitamin D</option></select></label>
+            <button type="button" className="operations-button operations-button-primary doctor-send-button" disabled={!selectedRemedies.length || !selectedForms.length} onClick={submitDoctorCarePlan}><Pill size={14} /> Send to Pharmacy &amp; Order Lab Test</button>
+          </section>
+        </div>
+        </>}
+        {activeDoctorSection === "Appointments" && <section className="operations-panel doctor-section-panel gold-frame-card"><header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">TODAY'S SCHEDULE</span><h2>Upcoming appointments</h2></div><span className="operations-status">2 patients waiting</span></header><div className="doctor-appointment-list">{[["10:30 AM", "Aarav Mehta", "Chronic Migraine", "AM"], ["11:00 AM", "Ananya Sharma", "Eczema", "AS"], ["11:45 AM", "Rohan Mehta", "Follow-up consultation", "RM"]].map(([time, name, concern, initialsText]) => <article className="doctor-record-row gold-frame-card" key={name}><span className="doctor-record-time">{time}</span><span className="operations-patient-avatar gold-avatar-ring">{initialsText}</span><span className="doctor-record-main"><b>{name}</b><small>{concern}</small></span><span className="doctor-appointment-state">{time === "11:45 AM" ? "Confirmed" : "Waiting"}</span><button type="button" className="operations-button operations-button-primary" disabled={!online} onClick={() => setActivePatient({ name, concern })}><Video size={15} /> Start consult</button></article>)}</div></section>}
+        {activeDoctorSection === "Prescriptions" && <section className="operations-panel doctor-section-panel gold-frame-card"><header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">PHARMACY HANDOFF</span><h2>Sent prescriptions</h2></div><span className="operations-status">{pharmacyOrders.length} total</span></header><div className="doctor-record-list">{pharmacyOrders.map((order) => <article className="doctor-record-row gold-frame-card" key={order.id}><span className="operations-patient-avatar gold-avatar-ring">{order.patientName.split(" ").map((part) => part[0]).join("")}</span><span className="doctor-record-main"><b>{order.remedy} {order.potency} · {order.form}</b><small>{order.patientName} · {order.diagnosis || "Doctor prescription"}</small></span><span className={`operations-status ${order.status === "Dispatched" ? "status-complete" : ""}`}>{order.status === "Dispatched" ? "Dispensed" : "Sent to pharmacy"}</span></article>)}</div></section>}
+        {activeDoctorSection === "Lab Orders" && <section className="operations-panel doctor-section-panel gold-frame-card"><header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">DIAGNOSTIC COORDINATION</span><h2>Patient lab orders</h2></div><span className="operations-status">{labRequests.length} total</span></header><div className="doctor-record-list">{labRequests.map((request) => <article className="doctor-record-row gold-frame-card" key={request.id}><span className="operations-panel-icon"><FlaskConical size={17} /></span><span className="doctor-record-main"><b>{request.test} · {request.patientName}</b><small>{request.slot} · {request.phlebotomist}</small>{request.reportName && <small className="gold-text-accent">Report: {request.reportName}</small>}</span><span className={`operations-status ${request.reportName ? "status-complete" : ""}`}>{request.reportName ? "Report uploaded" : request.status}</span></article>)}</div></section>}
+        {activeDoctorSection === "Earnings" && <><section className="operations-stat-grid doctor-stat-grid"><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><ShoppingBag size={17} /></span><small>This month</small><b>₹64,500</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><CalendarDays size={17} /></span><small>Consultations</small><b>43</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><Clock3 size={17} /></span><small>Pending payout</small><b>₹8,500</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><CheckCircle2 size={17} /></span><small>Paid this month</small><b>₹56,000</b></article></section><section className="operations-panel doctor-section-panel gold-frame-card"><header className="operations-panel-heading"><h2>Recent earnings</h2><span className="operations-status">November 2026</span></header><div className="doctor-record-list">{[["Today · 10:00 AM", "Video consultation · Aarav Mehta", "₹1,500"], ["Yesterday · 4:30 PM", "Follow-up consultation · Meera Iyer", "₹1,000"], ["30 Oct · 11:15 AM", "Video consultation · Kabir Rao", "₹1,500"]].map(([date, detail, amount]) => <article className="doctor-record-row gold-frame-card" key={detail}><span className="operations-panel-icon"><ShoppingBag size={17} /></span><span className="doctor-record-main"><b>{detail}</b><small>{date}</small></span><b className="gold-text-accent">{amount}</b></article>)}</div></section></>}
+        {activeDoctorSection === "Schedule" && <section className="operations-panel doctor-section-panel gold-frame-card"><header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">CONSULTATION AVAILABILITY</span><h2>Weekly schedule</h2></div><button type="button" className={`online-toggle ${online ? "is-online" : ""}`} aria-pressed={online} onClick={() => { const nextOnline = !online; localStorage.setItem(DOCTOR_AVAILABILITY_KEY, String(nextOnline)); setOnline(nextOnline); window.dispatchEvent(new Event("aartap-provider-availability")); notify(`You are now ${nextOnline ? "online" : "offline"} for consults.`); }}><i /> {online ? "Online for Consults" : "Offline"}</button></header><p className="doctor-schedule-hours">Consultation hours <b>09:00 AM – 02:00 PM</b></p><div className="doctor-schedule-days">{["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => <button type="button" key={day} aria-pressed={availableDays.includes(day)} className={availableDays.includes(day) ? "available" : ""} onClick={() => toggleAvailableDay(day)}><span>{day.slice(0, 3)}</span><b>{availableDays.includes(day) ? "Available" : "Off"}</b></button>)}</div><p className="doctor-schedule-note">Select the days you accept appointments. The online toggle controls whether patients can book now.</p></section>}
+      </>}
+
+      {role === "pharmacy" && <>
+        {activePharmacySection === "Prescriptions" && <>
+          <section className="operations-stat-grid pharmacy-stat-grid">
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><ClipboardList size={17} /></span><small>Prescriptions Received</small><b>{28 + Math.max(0, pharmacyOrders.length - samplePrescriptions.length)}</b><span>+4 today</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-gold"><Package size={17} /></span><small>Ready to Pack</small><b>{6 + pharmacyOrders.filter((order) => checklists[order.id]?.["Packing complete"]).length}</b><span>+4 today</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-orange"><Truck size={17} /></span><small>Dispatched (30-Min)</small><b>{18 + pharmacyOrders.filter((order) => order.status === "Dispatched").length}</b><span>+4 today</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-purple"><ShoppingBag size={17} /></span><small>Weekly Settlement</small><b>₹52,400</b></article>
+          </section>
+          <div className="pharmacy-dashboard-grid">
+            <section className="operations-panel pharmacy-order-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Live Incoming Homeopathy Prescriptions</h2></div><span className="pharmacy-live-badge"><i /> Live</span></header>
+              <div className="operations-table-wrap pharmacy-table-wrap"><table className="operations-table pharmacy-table"><thead><tr><th>Order ID</th><th>Patient Name</th><th>Prescribed Remedies</th><th>Packing</th><th>Dispatch</th></tr></thead><tbody>{pharmacyOrders.filter((order) => order.status !== "Dispatched").map((order) => {
+                const checklist = checklists[order.id] || {};
+                const allPacked = Boolean(checklist["Packing complete"]);
+                return <tr key={order.id}><td><b>#{order.id.startsWith("AP-") ? order.id : `AP-${order.id.slice(-4)}`}</b></td><td><b>{order.patientName}</b></td><td><b>{order.remedy} {order.potency} {order.form}</b><small>{order.diagnosis || "Doctor prescription"}</small></td><td><label className="pharmacy-done-check"><input type="checkbox" checked={allPacked} onChange={(event) => setPackingComplete(order.id, event.target.checked)} /><span>{allPacked ? "Done" : "Done"}</span></label></td><td><button type="button" className="operations-button operations-button-primary pharmacy-dispatch-button" disabled={!allPacked || !dispatchActive} onClick={() => dispatchPrescription(order)}><Truck size={13} /> Dispatch 30-Min Delivery</button></td></tr>;
+              })}</tbody></table></div>
+              {!pharmacyOrders.some((order) => order.status !== "Dispatched") && <div className="pharmacy-empty-state"><CheckCircle2 size={20} /><b>All prescriptions are dispatched</b><span>New doctor orders will appear here automatically.</span></div>}
+            </section>
+            <aside className="operations-panel pharmacy-inventory-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Inventory &amp; Stock Alerts</h2><span className="pharmacy-inventory-subtitle">German Dr. Reckeweg &amp; SBL dilutions</span></div><button type="button" className="pharmacy-view-all" onClick={() => setActivePharmacySection("Inventory Stock")}>View all</button></header><div className="pharmacy-inventory-list">{pharmacyInventory.map((item) => <article key={item.id} className="pharmacy-inventory-row"><span><b>{item.name}</b><small>{item.stock} {item.unit}</small></span><span className={`pharmacy-stock-alert ${item.alert ? "has-alert" : ""}`}>{item.alert || `${item.stock} left`}</span></article>)}</div></aside>
+          </div>
+        </>}
+        {activePharmacySection === "Packing Station" && <section className="operations-panel pharmacy-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Prescription Packing Station</h2><p>Complete each verification step before you dispatch an order.</p></div><span className="pharmacy-live-badge"><i /> Live queue</span></header><div className="pharmacy-packing-list">{pharmacyOrders.filter((order) => order.status !== "Dispatched").map((order) => {
+          const checklist = checklists[order.id] || {};
+          const steps = ["Prescription verified", "Remedy packed", "Address confirmed"];
+          const allPacked = steps.every((step) => checklist[step]);
+          return <article className="pharmacy-packing-card gold-frame-card" key={order.id}><div className="pharmacy-packing-order"><span className="operations-account-avatar gold-avatar-ring">{order.patientName.split(" ").map((part) => part[0]).join("")}</span><span><b>#{order.id.startsWith("AP-") ? order.id : `AP-${order.id.slice(-4)}`} · {order.patientName}</b><small>{order.remedy} {order.potency} {order.form}</small></span><span className={`operations-status ${allPacked ? "status-complete" : ""}`}>{allPacked ? "Ready to dispatch" : "Packing"}</span></div><div className="pharmacy-packing-steps">{steps.map((step) => <label key={step}><input type="checkbox" checked={Boolean(checklist[step])} onChange={() => togglePackingItem(order.id, step)} /><span>{step}</span></label>)}<button type="button" className="operations-button operations-button-primary pharmacy-dispatch-button" disabled={!allPacked || !dispatchActive} onClick={() => dispatchPrescription(order)}><Truck size={14} /> Dispatch 30-Min Delivery</button></div></article>;
+        })}</div>{!pharmacyOrders.some((order) => order.status !== "Dispatched") && <p className="pharmacy-empty-state">No prescriptions waiting to be packed.</p>}</section>}
+        {activePharmacySection === "30-Min Dispatch" && <section className="operations-panel pharmacy-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>30-Minute Delivery Dispatch</h2><p>Track prescriptions handed over to the courier fleet.</p></div><span className="pharmacy-live-badge"><i /> {dispatchActive ? "Fleet active" : "Fleet paused"}</span></header><div className="pharmacy-dispatch-list">{pharmacyOrders.filter((order) => order.status === "Dispatched").map((order, index) => <article className="pharmacy-dispatch-card gold-frame-card" key={order.id}><span className="pharmacy-dispatch-icon"><Truck size={19} /></span><span className="doctor-record-main"><b>#{order.id.startsWith("AP-") ? order.id : `AP-${order.id.slice(-4)}`} · {order.patientName}</b><small>{order.remedy} {order.potency} {order.form} · Hyderabad</small></span><span className="pharmacy-delivery-status"><i /> {index === 0 ? "Courier assigned" : "Out for delivery"}</span><span className="pharmacy-delivery-time">{index === 0 ? "12" : "24"} min</span></article>)}</div>{!pharmacyOrders.some((order) => order.status === "Dispatched") && <p className="pharmacy-empty-state">No active deliveries. Mark an order packed, then dispatch it from Prescriptions.</p>}</section>}
+        {activePharmacySection === "Inventory Stock" && <section className="operations-panel pharmacy-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Inventory &amp; Stock Alerts</h2><p>Monitor remedy dilutions and dispensing supplies.</p></div><span className="operations-status">{pharmacyInventory.filter((item) => item.alert).length} items need attention</span></header><div className="pharmacy-full-inventory">{pharmacyInventory.map((item) => <article className="pharmacy-stock-card gold-frame-card" key={item.id}><span className="pharmacy-dispatch-icon"><Pill size={18} /></span><span className="doctor-record-main"><b>{item.name}</b><small>{item.detail}</small></span><span className="pharmacy-stock-count">{item.stock} {item.unit}</span><span className={`pharmacy-stock-alert ${item.alert ? "has-alert" : ""}`}>{item.alert || "In stock"}</span><button type="button" className="operations-button operations-button-outline" onClick={() => restockInventoryItem(item)}>{item.stock === 0 || item.alert ? "Restock" : "Add stock"}</button></article>)}</div></section>}
+        {activePharmacySection === "Settlements" && <><section className="operations-stat-grid pharmacy-stat-grid"><article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-purple"><ShoppingBag size={17} /></span><small>Weekly Settlement</small><b>₹52,400</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><CheckCircle2 size={17} /></span><small>Settled Orders</small><b>{18 + pharmacyOrders.filter((order) => order.status === "Dispatched").length}</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-gold"><Clock3 size={17} /></span><small>Next Payout</small><b>Friday</b></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-orange"><Package size={17} /></span><small>Pending</small><b>₹8,400</b></article></section><section className="operations-panel pharmacy-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Recent settlements</h2><p>Weekly prescription and delivery payouts.</p></div></header><div className="doctor-record-list">{[["04 Nov 2026", "Weekly pharmacy settlement", "₹52,400", "Settled"], ["28 Oct 2026", "Weekly pharmacy settlement", "₹46,800", "Settled"], ["21 Oct 2026", "Weekly pharmacy settlement", "₹48,250", "Settled"]].map(([date, detail, amount, status]) => <article className="doctor-record-row gold-frame-card" key={date}><span className="operations-panel-icon"><CalendarDays size={17} /></span><span className="doctor-record-main"><b>{detail}</b><small>{date}</small></span><b className="gold-text-accent">{amount}</b><span className="operations-status status-complete">{status}</span></article>)}</div></section></>}
+      </>}
+
+      {role === "labs" && <>
+        {activeLabSection === "Home Visits" && <>
+          <section className="operations-stat-grid lab-stat-grid">
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><Home size={17} /></span><small>Home Visits Today</small><b>{labRequests.length.toString().padStart(2, "0")}</b><span>Scheduled collections</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-orange"><Clock3 size={17} /></span><small>Pending Sample Collection</small><b>{labRequests.filter((request) => !request.sampleStatus || request.sampleStatus === "Scheduled").length.toString().padStart(2, "0")}</b><span>Awaiting field pickup</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-purple"><Wallet size={17} /></span><small>50% Balance Pending</small><b>₹{labRequests.reduce((total, request) => total + (Number(request.balanceDue) || 0), 0).toLocaleString("en-IN")}</b><span>Due on home visit</span></article>
+            <article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><FileCheck2 size={17} /></span><small>Reports Uploaded</small><b>{labRequests.filter((request) => request.reportName).length.toString().padStart(2, "0")}</b><span>Digital delivery complete</span></article>
+          </section>
+          <div className="lab-dashboard-grid">
+            <section className="operations-panel lab-queue-panel gold-frame-card"><header className="operations-panel-heading"><div><span className="operations-kicker gold-text-accent">HOME SAMPLE COLLECTION</span><h2>Home visit queue</h2></div><span className="pharmacy-live-badge"><i /> {labFleetActive ? "Live collection fleet" : "Fleet paused"}</span></header>
+              <div className="operations-table-wrap lab-table-wrap"><table className="operations-table lab-queue-table"><thead><tr><th>Booking ID</th><th>Patient address</th><th>Schedule</th><th>Phlebotomist</th><th>Payment status</th></tr></thead><tbody>{labRequests.map((request) => <tr key={request.id}><td><b>#{request.id}</b><small>{request.patientName}</small></td><td><b>{request.address}</b><small>{request.test || "Lab test"}</small></td><td><b>{request.slot}</b><small>{request.sampleStatus || "Scheduled"}</small></td><td><label className="lab-technician-select"><UserRound size={13} /><select aria-label={`Assign phlebotomist for booking ${request.id}`} value={request.phlebotomist && labTechnicians.includes(request.phlebotomist) ? request.phlebotomist : ""} onChange={(event) => assignTechnician(request, event.target.value)}><option value="" disabled>Assign technician</option>{labTechnicians.map((name) => <option key={name} value={name}>{name}</option>)}</select></label></td><td><span className="lab-payment-badge"><i /> {request.paymentStatus || "50% Advance Paid"}</span><small className="lab-balance-caption">{request.balanceDue ? `₹${Number(request.balanceDue).toLocaleString("en-IN")} due on visit` : "Balance paid"}</small></td></tr>)}</tbody></table>
+              {!labRequests.length && <div className="pharmacy-empty-state"><FlaskConical size={20} /><b>No home visits scheduled</b><span>Doctor-ordered tests appear here automatically.</span></div>}</div>
+            </section>
+            <div className="lab-home-side">{renderFleetPanel()}<section className="lab-upload-prompt gold-frame-card"><span className="lab-upload-prompt-icon"><Upload size={17} /></span><span><b>Digital report delivery</b><small>Upload a verified PDF report to patient and doctor records.</small></span><button type="button" className="operations-button operations-button-primary" onClick={() => setActiveLabSection("Upload Reports")}>Upload report</button></section></div>
+          </div>
+        </>}
+        {activeLabSection === "Phlebotomist Fleet" && <div className="lab-fleet-page">{renderFleetPanel()}<section className="operations-panel lab-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Today’s field assignments</h2><p>Assign a certified phlebotomist to each visit.</p></div></header><div className="lab-assignment-list">{labRequests.map((request) => <article className="lab-assignment-row" key={request.id}><span className="operations-panel-icon"><MapPin size={16} /></span><span><b>#{request.id} · {request.patientName}</b><small>{request.address} · {request.slot}</small></span><select aria-label={`Assign phlebotomist for booking ${request.id}`} value={request.phlebotomist && labTechnicians.includes(request.phlebotomist) ? request.phlebotomist : ""} onChange={(event) => assignTechnician(request, event.target.value)}><option value="" disabled>Assign technician</option>{labTechnicians.map((name) => <option key={name} value={name}>{name}</option>)}</select></article>)}</div></section></div>}
+        {activeLabSection === "Sample Processing" && <section className="operations-panel lab-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Sample processing queue</h2><p>Record collection and processing milestones for each sample.</p></div><span className="pharmacy-live-badge"><i /> {labRequests.filter((request) => request.sampleStatus === "Processing").length} processing</span></header><div className="lab-processing-list">{labRequests.map((request) => {
+          const sampleStatus = request.sampleStatus || "Scheduled";
+          const nextAction = ({ Scheduled: "Mark received", Received: "Start processing", Processing: "Ready for report" })[sampleStatus];
+          return <article className="lab-processing-card gold-frame-card" key={request.id}><span className="operations-panel-icon"><FlaskConical size={18} /></span><span className="doctor-record-main"><b>#{request.id} · {request.patientName}</b><small>{request.test || "Lab test"} · {request.slot}</small></span><span className={`operations-status ${sampleStatus === "Ready for report" || sampleStatus === "Report uploaded" ? "status-complete" : ""}`}>{sampleStatus}</span>{nextAction && <button type="button" className="operations-button operations-button-outline" onClick={() => markSampleReceived(request)}>{nextAction}</button>}</article>;
+        })}</div>{!labRequests.length && <p className="pharmacy-empty-state">No samples are currently in the processing queue.</p>}</section>}
+        {activeLabSection === "Upload Reports" && <section className="operations-panel lab-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>Digital lab reports</h2><p>Upload PDF reports for delivery to patient and doctor records.</p></div><span className="pharmacy-live-badge"><i /> {labRequests.filter((request) => !request.reportName).length} pending</span></header><div className="lab-report-list">{labRequests.map((request) => <article className="lab-report-card gold-frame-card" key={request.id}><span className="lab-report-icon"><FileText size={18} /></span><span className="doctor-record-main"><b>#{request.id} · {request.patientName}</b><small>{request.test || "Lab test"} · {request.address}</small></span>{request.reportName ? <span className="report-uploaded"><CheckCircle2 size={15} />{request.reportName}</span> : <label className="operations-button operations-button-primary report-upload-button"><Upload size={14} /> Upload PDF<input type="file" accept="application/pdf,.pdf" onChange={(event) => uploadReport(request, event.target.files?.[0])} /></label>}</article>)}</div>{!labRequests.length && <p className="pharmacy-empty-state">No report requests available yet.</p>}</section>}
+        {activeLabSection === "Payouts" && <><section className="operations-stat-grid lab-stat-grid"><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><Wallet size={17} /></span><small>Advance collected</small><b>₹{labRequests.reduce((total, request) => total + (Number(request.advancePaid) || 0), 0).toLocaleString("en-IN")}</b><span>50% paid at booking</span></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-orange"><Clock3 size={17} /></span><small>Balance on visit</small><b>₹{labRequests.reduce((total, request) => total + (Number(request.balanceDue) || 0), 0).toLocaleString("en-IN")}</b><span>Pending collection</span></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon pharmacy-icon-purple"><ShoppingBag size={17} /></span><small>Collections today</small><b>{labRequests.length.toString().padStart(2, "0")}</b><span>Home visit bookings</span></article><article className="operations-stat gold-frame-card"><span className="operations-stat-icon"><CheckCircle2 size={17} /></span><small>Fully paid</small><b>{labRequests.filter((request) => !request.balanceDue).length.toString().padStart(2, "0")}</b><span>Reconciled bookings</span></article></section><section className="operations-panel lab-section-panel gold-frame-card"><header className="operations-panel-heading"><div><h2>50/50 payment reconciliation</h2><p>Confirm the remaining balance when payment is received at the home visit.</p></div></header><div className="lab-payout-list">{labRequests.map((request) => <article className="lab-payout-row" key={request.id}><span className="operations-panel-icon"><Wallet size={16} /></span><span><b>#{request.id} · {request.patientName}</b><small>₹{Number(request.advancePaid || 0).toLocaleString("en-IN")} advance paid · {request.paymentStatus || "50% Advance Paid"}</small></span><b className="lab-payout-due">{request.balanceDue ? `₹${Number(request.balanceDue).toLocaleString("en-IN")} due` : "Paid in full"}</b>{request.balanceDue ? <button type="button" className="operations-button operations-button-outline" onClick={() => recordBalancePayment(request)}>Record balance</button> : <span className="operations-status status-complete">Reconciled</span>}</article>)}</div></section></>}
+        {activeLabSection === "Profile" && <section className="operations-panel lab-profile-panel gold-frame-card"><span className="operations-account-avatar gold-avatar-ring">{initials}</span><span className="operations-kicker gold-text-accent">DIAGNOSTIC LAB ACCOUNT</span><h2>{displayName}</h2><p>Diagnostic Laboratory &amp; Home Collection Centre</p><div className="lab-profile-details"><span><small>Account role</small><b>Laboratory operations</b></span><span><small>Service area</small><b>Hyderabad, Telangana</b></span><span><small>Home collection fleet</small><b>{labFleetActive ? "Active" : "Paused"}</b></span><span><small>Registered email</small><b>{user.email || "Not provided"}</b></span></div><button type="button" className="operations-button operations-button-outline" onClick={toggleLabFleet}>{labFleetActive ? "Pause collection fleet" : "Activate collection fleet"}</button></section>}
+      </>}
+      </main>
+    </div>
+    {activePatient && <div className="operations-call-overlay"><section className="operations-call-card"><span className="operations-call-icon"><Video size={28} /></span><span className="operations-kicker">VIDEO CONSULTATION · DEMO</span><h2>{activePatient.name}</h2><p>{activePatient.concern} · Secure call room</p><div className="operations-call-status"><i /> Waiting for patient to join</div><button type="button" className="operations-button operations-button-danger" onClick={() => setActivePatient(null)}><Phone size={15} /> End call</button></section></div>}
+    {toast && <div className="operations-toast" role="status"><CheckCircle2 size={17} />{toast}</div>}
+  </div>;
+}
+
 const navItems = [
   { id: "home", label: "Home", icon: Home },
   { id: "doctors", label: "Doctors", icon: Stethoscope },
@@ -231,6 +613,7 @@ const navItems = [
 
 function App() {
   const [user, setUser] = useState(readSession);
+  const [doctorOnline, setDoctorOnline] = useState(readDoctorAvailability);
   const [page, setPage] = useState("home");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState([]);
@@ -246,6 +629,22 @@ function App() {
   const [orderStatus, setOrderStatus] = useState("All");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
+
+  useEffect(() => {
+    const refreshAvailability = () => setDoctorOnline(readDoctorAvailability());
+    window.addEventListener("storage", refreshAvailability);
+    window.addEventListener("aartap-provider-availability", refreshAvailability);
+    return () => {
+      window.removeEventListener("storage", refreshAvailability);
+      window.removeEventListener("aartap-provider-availability", refreshAvailability);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshDispatchStatus = () => setDispatchActive(localStorage.getItem(PHARMACY_DISPATCH_KEY) !== "false");
+    window.addEventListener("storage", refreshDispatchStatus);
+    return () => window.removeEventListener("storage", refreshDispatchStatus);
+  }, []);
 
   useEffect(() => {
     const scrollTimers = new Map();
@@ -381,7 +780,19 @@ function App() {
     setToast("Your order has been placed successfully.");
   };
   const toggleFavorite = (name) => setFavorites((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
+  const requestBooking = (doctor, type) => {
+    if (!doctorOnline) {
+      setToast("Doctor consultations are currently offline. Please try again later.");
+      return;
+    }
+    setModal({ type, doctor });
+  };
   const bookAppointment = (doctor, date, time, patient, paymentMethod) => {
+    if (!doctorOnline) {
+      setToast("Doctor consultations are currently offline. Please try again later.");
+      setModal(null);
+      return;
+    }
     const [year, month, day] = date.split("-");
     const monthName = new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
     const appointmentDate = `${Number(day)} ${monthName} ${year}`;
@@ -391,6 +802,9 @@ function App() {
     go("appointments");
   };
   if (!user) return <Login onLogin={(nextUser, nextPage) => { setUser(nextUser); setPage(nextPage); }} />;
+  if (["doctors", "pharmacy", "labs"].includes(user.role)) {
+    return <OperationsDashboard role={user.role} user={user} onSignOut={signOut} />;
+  }
 
   const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email?.split("@")[0] || (user.guest ? "Guest" : "Aartap member");
   const userInitials = user.firstName
@@ -439,9 +853,9 @@ function App() {
           {page === "home" && <div className="date-chip"><CalendarDays size={15} /> {new Intl.DateTimeFormat("en-US", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</div>}
         </section>
         {["home", "doctors", "appointments", "pharmacy", "labs"].includes(page) && <SearchBar value={query} onChange={setQuery} placeholder={page === "appointments" ? "Search doctors, appointments, clinics..." : page === "pharmacy" ? "Search medicines, health products..." : page === "labs" ? "Search tests, packages, labs..." : page === "doctors" ? "Search doctors, specialties..." : "Search doctors, medicines, labs..."} onFilter={() => setModal({ type: "filters" })} onToast={setToast} showFilter={page !== "home" && page !== "doctors"} filterInline={page === "appointments"} />}
-        {page === "home" && <HomePage query={query} onNavigate={go} onBook={(doctor) => setModal({ type: "booking", doctor })} onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} onToast={setToast} />}
-        {page === "doctors" && <DoctorsPage query={query} onBook={(doctor) => setModal({ type: "slots", doctor })} favorites={favorites} onFavorite={toggleFavorite} />}
-        {page === "appointments" && <AppointmentsPage appointments={appointments} favorites={favorites} onFavorite={toggleFavorite} query={query} onToast={setToast} onMyData={() => go("profile")} onCancel={(id) => { setAppointments((current) => current.filter((item) => item.id !== id)); setToast("Appointment cancelled."); }} onBook={(doctor) => setModal({ type: "booking", doctor })} />}
+        {page === "home" && <HomePage query={query} onNavigate={go} onBook={(doctor) => requestBooking(doctor, "booking")} onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} onToast={setToast} />}
+        {page === "doctors" && <DoctorsPage query={query} onBook={(doctor) => requestBooking(doctor, "slots")} favorites={favorites} onFavorite={toggleFavorite} />}
+        {page === "appointments" && <AppointmentsPage appointments={appointments} favorites={favorites} onFavorite={toggleFavorite} query={query} onToast={setToast} onMyData={() => go("profile")} onCancel={(id) => { setAppointments((current) => current.filter((item) => item.id !== id)); setToast("Appointment cancelled."); }} onBook={(doctor) => requestBooking(doctor, "booking")} />}
         {page === "pharmacy" && <PharmacyPage query={query} onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} onNavigate={go} onToast={setToast} />}
         {page === "labs" && <LabsPage query={query} onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} onNavigate={go} onToast={setToast} />}
         {page === "wishlist" && <WishlistPage favorites={favorites} onFavorite={toggleFavorite} onAdd={addToCart} onNavigate={go} />}
